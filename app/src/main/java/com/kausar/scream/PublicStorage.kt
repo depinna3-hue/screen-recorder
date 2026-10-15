@@ -2,6 +2,7 @@ package com.kausar.scream
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -78,15 +79,56 @@ object PublicStorage {
         }
     }
 
+    /** Hasil penyimpanan ke folder publik. uri = alamat content:// untuk diputar/dibagikan. */
+    data class Published(val uri: Uri?, val displayPath: String, val name: String)
+
     /** Salin file sementara app ke Musik/Movies publik, lalu hapus sementara. */
-    fun publishFile(ctx: Context, temp: File, isVideo: Boolean, mime: String): String {
+    fun publishFileEx(ctx: Context, temp: File, isVideo: Boolean, mime: String): Published {
         val name = temp.name
         val target = if (isVideo) prepareVideoFile(ctx, name) else prepareAudioFile(ctx, name, mime)
         openOut(ctx, target).use { out ->
             FileInputStream(temp).use { inp -> inp.copyTo(out) }
         }
         finishPending(ctx, target)
+        // Android 9 ke bawah: daftarkan file ke MediaStore agar punya Uri & muncul di daftar rekaman
+        val uri = target.uri ?: target.file?.let { registerLegacy(ctx, it, mime, isVideo) }
         try { temp.delete() } catch (_: Exception) {}
-        return target.displayPath
+        return Published(uri, target.displayPath, name)
+    }
+
+    /** Versi lama (tetap ada agar kode lain tidak rusak). */
+    fun publishFile(ctx: Context, temp: File, isVideo: Boolean, mime: String): String =
+        publishFileEx(ctx, temp, isVideo, mime).displayPath
+
+    /** Android < 10: tulis baris MediaStore manual dan kembalikan Uri-nya. */
+    @Suppress("DEPRECATION")
+    private fun registerLegacy(ctx: Context, f: File, mime: String, isVideo: Boolean): Uri? {
+        return try {
+            val v = ContentValues().apply {
+                put(MediaStore.MediaColumns.DATA, f.absolutePath)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, f.name)
+                put(MediaStore.MediaColumns.TITLE, f.nameWithoutExtension)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.SIZE, f.length())
+            }
+            val collection = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            ctx.contentResolver.insert(collection, v)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Minta sistem membaca ulang metadata (durasi/ukuran) setelah isi file diubah. */
+    @Suppress("DEPRECATION")
+    fun rescan(ctx: Context, uri: Uri) {
+        try {
+            ctx.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val p = c.getString(0)
+                    if (!p.isNullOrEmpty()) MediaScannerConnection.scanFile(ctx, arrayOf(p), null, null)
+                }
+            }
+        } catch (_: Exception) {}
     }
 }
