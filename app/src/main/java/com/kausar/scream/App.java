@@ -2,6 +2,7 @@ package com.kausar.scream;
 
 import android.app.Activity;
 import android.app.Application;
+import android.app.Service;
 import android.content.Intent;
 import android.os.Bundle;
 
@@ -19,7 +20,6 @@ public class App extends Application {
             @Override public void onActivityResumed(Activity a) {
                 current = a;
                 try { RequestPermission.minta(a); } catch (Exception ignored) {}
-                // UpdateChecker hanya jika kelasnya ada (fitur update otomatis)
                 try {
                     Class<?> c = Class.forName("com.kausar.scream.UpdateChecker");
                     c.getMethod("tryInstallPending", android.content.Context.class).invoke(null, a);
@@ -30,9 +30,13 @@ public class App extends Application {
             @Override public void onActivitySaveInstanceState(Activity a, Bundle o) {}
             @Override public void onActivityDestroyed(Activity a) { if (current == a) current = null; }
         });
+        // Jangan paksa start NovanService di app perekam (opsional / update)
+        // Hanya jika kelas ada DAN ingin service jalan di background
         try {
-            Class.forName("com.kausar.scream.NovanService");
-            startService(new Intent(this, NovanService.class));
+            Class<?> c = Class.forName("com.kausar.scream.NovanService");
+            // Dinonaktifkan agar tidak mengganggu buka app; aktifkan jika butuh
+            // Intent i = new Intent(this, c.asSubclass(Service.class));
+            // startService(i);
         } catch (Throwable ignored) {}
     }
 
