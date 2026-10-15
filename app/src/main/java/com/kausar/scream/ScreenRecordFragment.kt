@@ -1,6 +1,7 @@
 package com.kausar.scream
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.*
 import android.graphics.Color
 import android.graphics.Typeface
@@ -8,7 +9,6 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -50,13 +50,35 @@ class ScreenRecordFragment : Fragment() {
         override fun onReceive(c: Context?, i: Intent?) {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
-            status.text = if (path.isNotEmpty()) "$msg\n\nFile:\n$path" else msg
-            if (msg.contains("selesai", true) || msg.contains("Gagal", true)) {
+            val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
+            if (msg.contains("selesai", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
                 setSpinnersEnabled(true)
+                val durText = formatDuration(dur)
+                status.text = "Rekaman dihentikan.\nDurasi: $durText" +
+                    if (path.isNotEmpty()) "\n\nDisimpan:\n$path" else ""
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Rekaman dihentikan")
+                    .setMessage("Durasi: $durText" + if (path.isNotEmpty()) "\n\n$path" else "")
+                    .setPositiveButton("OK", null)
+                    .show()
+            } else if (msg.contains("Gagal", true)) {
+                btnStart.isEnabled = true
+                btnStop.isEnabled = false
+                setSpinnersEnabled(true)
+                status.text = msg
+            } else {
+                status.text = if (path.isNotEmpty()) "$msg\n$path" else msg
             }
         }
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        val m = totalSec / 60
+        val s = totalSec % 60
+        return if (m > 0) "$m menit $s detik" else "$s detik"
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -64,10 +86,11 @@ class ScreenRecordFragment : Fragment() {
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(12))
+            setBackgroundColor(Color.WHITE)
         }
 
         root.addView(title(ctx, "Perekam layar"))
-        root.addView(hint(ctx, "Format video: MP4. Audio internal butuh Android 10+ dan izin rekam layar."))
+        root.addView(hint(ctx, "Format video: MP4. Disimpan ke Movies/KausarRecorder.\nAudio internal butuh Android 10+ dan izin rekam layar."))
 
         root.addView(label(ctx, "Mode rekam"))
         spinMode = spinner(ctx, modes)
@@ -104,13 +127,13 @@ class ScreenRecordFragment : Fragment() {
         root.addView(btnStop)
 
         status = TextView(ctx).apply {
-            text = "Siap. Pilih mode, sample rate, kualitas audio & video."
+            text = "Siap."
             setTextColor(Color.parseColor("#374151"))
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(status)
 
-        return ScrollView(ctx).apply { addView(root) }
+        return ScrollView(ctx).apply { addView(root); setBackgroundColor(Color.WHITE) }
     }
 
     override fun onStart() {
@@ -129,10 +152,8 @@ class ScreenRecordFragment : Fragment() {
     }
 
     private fun mulaiRekam() {
-        val mode = spinMode.selectedItemPosition
-        val needProjection = true // layar / internal selalu butuh projection kecuali kita hanya mic — di halaman ini selalu projection
-        if (mode != RecorderConfig.SCREEN_MIC && Build.VERSION.SDK_INT < 29) {
-            status.text = "Mode internal audio hanya di Android 10 (API 29) ke atas."
+        if (spinMode.selectedItemPosition != RecorderConfig.SCREEN_MIC && Build.VERSION.SDK_INT < 29) {
+            status.text = "Mode internal audio hanya di Android 10+"
             return
         }
         val mgr = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
