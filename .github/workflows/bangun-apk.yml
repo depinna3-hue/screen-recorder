@@ -1,0 +1,208 @@
+name: Bangun APK Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  bangun:
+    name: Kompilasi APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil kode sumber
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ekstrak ZIP proyek
+        run: |
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -gt 0 ]; then
+            for z in "${zips[@]}"; do
+              echo "Mengekstrak $z ..."
+              unzip -o "$z"
+            done
+          else
+            echo "Tidak ada berkas ZIP di root repositori."
+          fi
+
+      - name: Pasang Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Siapkan Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Pasang platform Android
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-34" "platforms;android-35" "platforms;android-36" "build-tools;34.0.0" "build-tools;35.0.0" "build-tools;36.0.0" || true
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Siapkan Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Kompilasi APK Android
+        run: |
+          GDIR=$(find . -maxdepth 4 \( -name "settings.gradle*" -o -name "build.gradle*" \) ! -path "*/build/*" | head -n 1)
+          [ -n "$GDIR" ] && cd "$(dirname "$GDIR")"
+          ROOT=$(pwd)
+          MODE="release"
+          [ -z "$MODE" ] && MODE="debug"
+          echo "Mode pembangunan: $MODE"
+          mkdir -p "$ROOT/signing" signing
+          KS=""
+          for c in "$ROOT/signing/release.jks" "$ROOT/signing/release.keystore" "signing/release.jks" "signing/release.keystore"; do
+            if [ -f "$c" ]; then KS="$c"; break; fi
+          done
+          if [ -z "$KS" ]; then
+            echo "Belum ada keystore di repo — membuat signing/release.jks sekali..."
+            keytool -genkeypair -v -storetype PKCS12 \
+              -keystore "$ROOT/signing/release.jks" \
+              -alias release \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android123 -keypass android123 \
+              -dname "CN=App Release, OU=Mobile, O=Dev, L=City, ST=ST, C=ID" \
+              -noprompt
+            printf '%s\n' "storePassword=android123" "keyPassword=android123" "keyAlias=release" > "$ROOT/signing/credentials.properties"
+            KS="$ROOT/signing/release.jks"
+            git config user.name "apk-signing-bot" || true
+            git config user.email "apk-signing@users.noreply.github.com" || true
+            git add "$ROOT/signing/release.jks" "$ROOT/signing/credentials.properties" 2>/dev/null || git add signing/ || true
+            git commit -m "Tambah keystore stabil (wajib sama di setiap build)" || true
+            git push origin HEAD || git push || true
+            # Jika push gagal, commit lewat API agar keystore tetap di repo
+            if [ ! -f signing/release.jks ] && [ -f "$ROOT/signing/release.jks" ]; then
+              cp "$ROOT/signing/release.jks" signing/release.jks || true
+              cp "$ROOT/signing/credentials.properties" signing/credentials.properties || true
+            fi
+          fi
+          if [ -n "$KS" ] && [ -f "${KS%/*}/credentials.properties" ] || [ -f "$ROOT/signing/credentials.properties" ] || [ -f signing/credentials.properties ]; then
+            CRED=""
+            for c in "$ROOT/signing/credentials.properties" "signing/credentials.properties" "${KS%/*}/credentials.properties"; do
+              if [ -f "$c" ]; then CRED="$c"; break; fi
+            done
+            if [ -n "$CRED" ]; then
+              set -a
+              # shellcheck disable=SC1091
+              . "$CRED" 2>/dev/null || true
+              set +a
+            fi
+            export KEYSTORE_FILE="$KS"
+            export KEYSTORE_PASSWORD="${storePassword:-android123}"
+            export KEY_PASSWORD="${keyPassword:-android123}"
+            export KEY_ALIAS="${keyAlias:-release}"
+            echo "Tanda tangan STABIL: $KS alias=$KEY_ALIAS"
+          else
+            echo "PERINGATAN: credentials.properties tidak ada — APK mungkin beda tanda tangan!"
+          fi
+          # Bersihkan sisa suffix paket (.debug / .gratis / .pro) di build.gradle lama
+          echo "Membersihkan applicationIdSuffix/versionNameSuffix/productFlavors bila ada..."
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            sed -i \
+              -e "s/applicationIdSuffix[[:space:]]*'[^']*'//g" \
+              -e "s/applicationIdSuffix[[:space:]]*\"[^\"]*\"//g" \
+              -e "s/versionNameSuffix[[:space:]]*'[^']*'//g" \
+              -e "s/versionNameSuffix[[:space:]]*\"[^\"]*\"//g" \
+              "$f" || true
+            # Hapus blok productFlavors & flavorDimensions (sisa template lama)
+            awk '
+              /flavorDimensions/ { skip=1; next }
+              /productFlavors[[:space:]]*\{/ { skip=1; depth=1; next }
+              skip {
+                if ($0 ~ /\{/) depth++
+                if ($0 ~ /\}/) { depth--; if (depth<=0) skip=0 }
+                next
+              }
+              { print }
+            ' "$f" > "$f.clean" 2>/dev/null && mv "$f.clean" "$f" || true
+          done < <(find . -name "build.gradle*" ! -path "*/build/*" 2>/dev/null)
+
+          # Selalu bangun release bertanda tangan stabil dulu (agar update tidak bentrok)
+          echo "Menjalankan assembleRelease (tanda tangan stabil)..."
+          gradle assembleRelease --no-daemon -x lint -x test || true
+          if [ "$MODE" = "debug" ] || [ "$MODE" = "both" ]; then
+            echo "Menjalankan assembleDebug (tanda tangan sama jika keystore aktif)..."
+            gradle assembleDebug --no-daemon -x lint -x test || true
+          fi
+          if [ "$MODE" = "release" ]; then
+            gradle assembleRelease --no-daemon -x lint -x test
+          fi
+
+      - name: Siapkan berkas APK dan tanda tangan
+        run: |
+          # Utamakan apk/release (tanpa folder flavor gratis/pro)
+          APK_PATH=$(find . -path "*/build/outputs/apk/release/*.apk" -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -path "*/build/outputs/apk/*/release/*.apk" -name "*.apk" 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -path "*/build/outputs/apk/*" -name "*.apk" 2>/dev/null | head -n 1)
+          fi
+          test -n "$APK_PATH" || { echo "Berkas APK tidak ditemukan!"; exit 1; }
+          echo "APK dipilih: $APK_PATH"
+
+          BG=$(find . -path "*/app/build.gradle" ! -path "*/build/*" | head -n 1)
+          VCODE=""
+          VNAME=""
+          if [ -n "$BG" ] && [ -f "$BG" ]; then
+            VCODE=$(grep -oE 'versionCode[[:space:]]+[0-9]+' "$BG" | head -n 1 | grep -oE '[0-9]+$')
+            VNAME=$(grep -oE "versionName[[:space:]]+['\"][^'\"]+['\"]" "$BG" | head -n 1 | sed -E "s/.*['\"]([^'\"]+)['\"]/\\1/")
+          fi
+          if [ -z "$VCODE" ]; then VCODE="${{ github.run_number }}"; fi
+          if [ -z "$VNAME" ]; then VNAME="$VCODE"; fi
+          echo "VERSION_CODE=$VCODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VNAME" >> "$GITHUB_ENV"
+
+          APK_FILE="screen-recorder-v${VCODE}.apk"
+          cp "$APK_PATH" "$APK_FILE"
+          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
+
+          PATHS="$APK_FILE"
+          if [ -f signing/release.jks ]; then
+            KS_OUT="screen-recorder-tanda-tangan.jks"
+            cp signing/release.jks "$KS_OUT"
+            PATHS="$PATHS"$'\n'"$KS_OUT"
+          elif [ -f signing/release.keystore ]; then
+            KS_OUT="screen-recorder-tanda-tangan.jks"
+            cp signing/release.keystore "$KS_OUT"
+            PATHS="$PATHS"$'\n'"$KS_OUT"
+          fi
+          if [ -f signing/credentials.properties ]; then
+            CRED_OUT="screen-recorder-credentials.properties"
+            cp signing/credentials.properties "$CRED_OUT"
+            PATHS="$PATHS"$'\n'"$CRED_OUT"
+          fi
+          {
+            echo "RELEASE_FILES<<EOF"
+            printf '%s\n' "$PATHS"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+          echo "Berkas siap rilis:"
+          printf '%s\n' "$PATHS"
+
+      - name: Simpan artefak
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-screen-recorder-${{ env.VERSION_CODE }}
+          path: ${{ env.RELEASE_FILES }}
+          if-no-files-found: warn
+
+      - name: Terbitkan ke GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_CODE }}
+          name: Versi ${{ env.VERSION_NAME }} (code ${{ env.VERSION_CODE }})
+          generate_release_notes: false
+          files: ${{ env.RELEASE_FILES }}
