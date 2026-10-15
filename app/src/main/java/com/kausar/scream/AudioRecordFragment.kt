@@ -50,7 +50,11 @@ class AudioRecordFragment : Fragment() {
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
+            // Hanya tanggapi rekaman suara dari tab ini (abaikan siaran layar / lanjutkan rekaman)
+            val src = i.getStringExtra(RecordingService.EXTRA_SOURCE) ?: RecordingService.SOURCE_AUDIO
+            if (src != RecordingService.SOURCE_AUDIO) return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
+            val uri = i.getStringExtra(RecordingService.EXTRA_URI) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
 
             if (msg.contains("selesai", true)) {
@@ -60,11 +64,8 @@ class AudioRecordFragment : Fragment() {
                 val durText = formatDuration(dur)
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan di Musik:\n$path" else ""
-                AlertDialog.Builder(requireContext())
-                    .setTitle("Rekaman dihentikan")
-                    .setMessage("Durasi: $durText" + if (path.isNotEmpty()) "\n\nLokasi:\n$path" else "")
-                    .setPositiveButton("OK", null)
-                    .show()
+                // Tampilkan pemutar agar hasil rekaman bisa langsung didengar
+                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
@@ -153,6 +154,10 @@ class AudioRecordFragment : Fragment() {
     }
 
     private fun mulaiRekam() {
+        if (RecordingService.isRunning) {
+            status.text = "Masih ada rekaman yang berjalan. Hentikan dulu sebelum memulai yang baru."
+            return
+        }
         val mode = spinMode.selectedItemPosition
         val needInternal = mode == RecorderConfig.AUDIO_INTERNAL || mode == RecorderConfig.AUDIO_INTERNAL_MIC
         if (needInternal) {
