@@ -2,7 +2,6 @@ package com.kausar.scream
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.ProgressDialog
 import android.content.*
 import android.graphics.Color
 import android.graphics.Typeface
@@ -16,8 +15,6 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
-import java.io.File
-import java.util.concurrent.Executors
 
 class AudioRecordFragment : Fragment() {
 
@@ -34,7 +31,8 @@ class AudioRecordFragment : Fragment() {
         "Internal audio",
         "Internal audio + mikrofon HP"
     )
-    private val formats = arrayOf("AAC (.m4a)", "MP3 (konversi setelah stop)", "WAV (.wav)")
+    // Jujur: tidak ada encoder MP3 bawaan Android
+    private val formats = arrayOf("AAC (.m4a)", "WAV (.wav)")
     private val samples = arrayOf("48000 Hz", "44100 Hz", "32000 Hz", "22050 Hz", "16000 Hz")
     private val sampleVals = intArrayOf(48000, 44100, 32000, 22050, 16000)
     private val qualities = arrayOf("Tinggi", "Sedang", "Rendah")
@@ -54,7 +52,6 @@ class AudioRecordFragment : Fragment() {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
-            val wantMp3 = i.getBooleanExtra(RecordingService.EXTRA_WANT_MP3, false)
 
             if (msg.contains("selesai", true)) {
                 btnStart.isEnabled = true
@@ -62,17 +59,11 @@ class AudioRecordFragment : Fragment() {
                 setSpinnersEnabled(true)
                 val durText = formatDuration(dur)
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
-                    if (path.isNotEmpty()) "\n\nFile sementara:\n$path" else ""
-
+                    if (path.isNotEmpty()) "\n\nDisimpan di Musik:\n$path" else ""
                 AlertDialog.Builder(requireContext())
                     .setTitle("Rekaman dihentikan")
-                    .setMessage("Durasi: $durText")
-                    .setPositiveButton("OK") { _, _ ->
-                        if (wantMp3 && path.isNotEmpty() && path.endsWith(".wav", true)) {
-                            convertToMp3(File(path), durText)
-                        }
-                    }
-                    .setCancelable(false)
+                    .setMessage("Durasi: $durText" + if (path.isNotEmpty()) "\n\nLokasi:\n$path" else "")
+                    .setPositiveButton("OK", null)
                     .show()
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
@@ -80,49 +71,7 @@ class AudioRecordFragment : Fragment() {
                 setSpinnersEnabled(true)
                 status.text = msg
             } else {
-                status.text = if (path.isNotEmpty()) "$msg\n\n$path" else msg
-            }
-        }
-    }
-
-    private fun convertToMp3(wav: File, durText: String) {
-        val ctx = requireContext()
-        @Suppress("DEPRECATION")
-        val progress = ProgressDialog(ctx).apply {
-            setTitle("Mengonversi ke MP3")
-            setMessage("Rekaman dihentikan. Durasi: $durText\n\nMengonversi… 0%")
-            setCancelable(false)
-            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
-            max = 100
-            show()
-        }
-
-        Executors.newSingleThreadExecutor().execute {
-            val result = Mp3Converter.convertWavToCompressed(wav, preferMp3 = true) { p ->
-                if (activity != null) {
-                    requireActivity().runOnUiThread {
-                        progress.progress = p
-                        progress.setMessage(
-                            "Rekaman dihentikan. Durasi: $durText\n\nMengonversi… $p%"
-                        )
-                    }
-                }
-            }
-            if (activity != null) {
-                requireActivity().runOnUiThread {
-                    progress.dismiss()
-                    if (result.ok && result.outFile != null) {
-                        status.text = "Rekaman dihentikan.\nDurasi: $durText\n\n${result.message}\n\nFile:\n${result.outFile.absolutePath}"
-                        AlertDialog.Builder(ctx)
-                            .setTitle("Konversi selesai")
-                            .setMessage("Durasi: $durText\n\n${result.message}\n\n${result.outFile.absolutePath}")
-                            .setPositiveButton("OK", null)
-                            .show()
-                    } else {
-                        status.text = "Rekaman dihentikan.\nDurasi: $durText\n\n${result.message}\nFile WAV: ${wav.absolutePath}"
-                        Toast.makeText(ctx, result.message, Toast.LENGTH_LONG).show()
-                    }
-                }
+                status.text = if (path.isNotEmpty()) "$msg\n$path" else msg
             }
         }
     }
@@ -139,10 +88,11 @@ class AudioRecordFragment : Fragment() {
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(12))
+            setBackgroundColor(Color.WHITE)
         }
 
         root.addView(title(ctx, "Perekam suara"))
-        root.addView(hint(ctx, "Pilih MP3 → direkam dulu, lalu otomatis dikonversi setelah stop (progres %). Internal audio = Android 10+."))
+        root.addView(hint(ctx, "File disimpan ke folder Musik/KausarRecorder (bukan data app).\nFormat nyata: AAC atau WAV. Internal audio = Android 10+."))
 
         root.addView(label(ctx, "Sumber audio"))
         spinMode = spinner(ctx, modes)
@@ -178,13 +128,13 @@ class AudioRecordFragment : Fragment() {
         root.addView(btnStop)
 
         status = TextView(ctx).apply {
-            text = "Siap. Pilih sumber, format, sample rate, dan kualitas."
+            text = "Siap."
             setTextColor(Color.parseColor("#374151"))
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(status)
 
-        return ScrollView(ctx).apply { addView(root) }
+        return ScrollView(ctx).apply { addView(root); setBackgroundColor(Color.WHITE) }
     }
 
     override fun onStart() {
@@ -211,7 +161,7 @@ class AudioRecordFragment : Fragment() {
                 return
             }
             val mgr = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            status.text = "Izin rekam layar diperlukan untuk menangkap audio internal..."
+            status.text = "Izin rekam layar diperlukan untuk audio internal..."
             projectionLauncher.launch(mgr.createScreenCaptureIntent())
         } else {
             launchService(0, Intent())
@@ -220,11 +170,7 @@ class AudioRecordFragment : Fragment() {
 
     private fun launchService(code: Int, data: Intent) {
         val ctx = requireContext()
-        val fmt = when (spinFormat.selectedItemPosition) {
-            1 -> RecorderConfig.FMT_MP3
-            2 -> RecorderConfig.FMT_WAV
-            else -> RecorderConfig.FMT_AAC
-        }
+        val fmt = if (spinFormat.selectedItemPosition == 1) RecorderConfig.FMT_WAV else RecorderConfig.FMT_AAC
         val i = Intent(ctx, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
             putExtra(RecordingService.EXTRA_RESULT_CODE, code)
