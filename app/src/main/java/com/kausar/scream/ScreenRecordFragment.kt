@@ -90,7 +90,7 @@ class ScreenRecordFragment : Fragment() {
 
         btnStart = Button(ctx).apply {
             text = "Mulai rekam layar"
-            setOnClickListener { onStart() }
+            setOnClickListener { mulaiRekam() }
         }
         btnStop = Button(ctx).apply {
             text = "Stop"
@@ -128,7 +128,7 @@ class ScreenRecordFragment : Fragment() {
         super.onStop()
     }
 
-    private fun onStart() {
+    private fun mulaiRekam() {
         val mode = spinMode.selectedItemPosition
         val needProjection = true // layar / internal selalu butuh projection kecuali kita hanya mic — di halaman ini selalu projection
         if (mode != RecorderConfig.SCREEN_MIC && Build.VERSION.SDK_INT < 29) {
