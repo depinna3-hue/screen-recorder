@@ -17,37 +17,51 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var pageLabel: TextView
+    private lateinit var pager: ViewPager2
+
+    private val tabTitles = arrayOf("Layar", "Suara")
+    private val pageHints = arrayOf(
+        "Halaman 1 · Perekam layar (MP4)",
+        "Halaman 2 · Perekam suara (AAC / WAV)"
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
             val root = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setBackgroundColor(Color.parseColor("#F3F6FB"))
-                setPadding(dp(12), dp(16), dp(12), dp(12))
+                setBackgroundColor(Color.parseColor("#F0F2F5"))
             }
 
-            root.addView(TextView(this).apply {
-                text = "Kausar Screen & Voice Recorder"
+            // Header
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.parseColor("#075E54"))
+                setPadding(dp(16), dp(18), dp(16), dp(12))
+            }
+            header.addView(TextView(this).apply {
+                text = "Kausar Recorder"
                 textSize = 20f
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.parseColor("#111827"))
-                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
             })
-
-            root.addView(TextView(this).apply {
-                text = "Geser kiri / kanan untuk ganti halaman"
+            pageLabel = TextView(this).apply {
+                text = pageHints[0]
                 textSize = 13f
-                setTextColor(Color.parseColor("#6B7280"))
-                gravity = Gravity.CENTER
-                setPadding(0, dp(6), 0, dp(10))
-            })
+                setTextColor(Color.parseColor("#D1F4DE"))
+                setPadding(0, dp(4), 0, 0)
+            }
+            header.addView(pageLabel)
+            root.addView(header)
 
-            val pager = ViewPager2(this).apply {
+            // Content pager
+            pager = ViewPager2(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
                 )
@@ -56,24 +70,31 @@ class MainActivity : AppCompatActivity() {
                     override fun createFragment(position: Int): Fragment =
                         if (position == 0) ScreenRecordFragment() else AudioRecordFragment()
                 }
+                offscreenPageLimit = 1
             }
             root.addView(pager)
 
-            pageLabel = TextView(this).apply {
-                text = "Halaman 1 · Perekam layar (MP4)"
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#1565C0"))
-                setPadding(0, dp(8), 0, 0)
+            // Bottom tabs (seperti WhatsApp)
+            val tabs = TabLayout(this).apply {
+                tabMode = TabLayout.MODE_FIXED
+                tabGravity = TabLayout.GRAVITY_FILL
+                setBackgroundColor(Color.WHITE)
+                setSelectedTabIndicatorColor(Color.parseColor("#075E54"))
+                setTabTextColors(Color.parseColor("#667781"), Color.parseColor("#075E54"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             }
-            root.addView(pageLabel)
+            root.addView(tabs)
+
+            TabLayoutMediator(tabs, pager) { tab, pos ->
+                tab.text = tabTitles[pos]
+            }.attach()
 
             pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
-                    pageLabel.text = if (position == 0)
-                        "Halaman 1 · Perekam layar (MP4)"
-                    else
-                        "Halaman 2 · Perekam suara (AAC / MP3 / WAV)"
+                    pageLabel.text = pageHints[position]
                 }
             })
 
@@ -93,10 +114,21 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) need.add(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) need.add(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) need.add(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO)
+                != PackageManager.PERMISSION_GRANTED
+            ) need.add(Manifest.permission.READ_MEDIA_AUDIO)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO)
+                != PackageManager.PERMISSION_GRANTED
+            ) need.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else if (Build.VERSION.SDK_INT <= 28) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED
+            ) need.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
         if (need.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, need.toTypedArray(), 991)
         }
