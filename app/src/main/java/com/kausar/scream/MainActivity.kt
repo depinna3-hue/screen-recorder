@@ -25,10 +25,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageLabel: TextView
     private lateinit var pager: ViewPager2
 
-    private val tabTitles = arrayOf("Layar", "Suara")
+    private val tabTitles = arrayOf("Layar", "Suara", "Daftar")
     private val pageHints = arrayOf(
         "Halaman 1 · Perekam layar (MP4)",
-        "Halaman 2 · Perekam suara (AAC / WAV)"
+        "Halaman 2 · Perekam suara (AAC / WAV)",
+        "Halaman 3 · Daftar rekaman (putar, lanjutkan)"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,9 +67,12 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
                 )
                 adapter = object : FragmentStateAdapter(this@MainActivity) {
-                    override fun getItemCount() = 2
-                    override fun createFragment(position: Int): Fragment =
-                        if (position == 0) ScreenRecordFragment() else AudioRecordFragment()
+                    override fun getItemCount() = 3
+                    override fun createFragment(position: Int): Fragment = when (position) {
+                        0 -> ScreenRecordFragment()
+                        1 -> AudioRecordFragment()
+                        else -> RecordingsFragment()
+                    }
                 }
                 offscreenPageLimit = 1
             }
