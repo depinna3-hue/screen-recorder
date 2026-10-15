@@ -9,9 +9,12 @@ import android.hardware.display.VirtualDisplay
 import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -44,6 +47,20 @@ class RecordingService : Service() {
         const val EXTRA_DURATION_MS = "duration_ms"
         const val EXTRA_WANT_MP3 = "want_mp3"
 
+        // --- Lanjutkan rekaman & pemutaran ---
+        const val EXTRA_CONTINUE_URI = "continue_uri"   // file lama yang akan disambung (content://)
+        const val EXTRA_CHANNELS = "channels"           // jumlah kanal file lama (untuk AAC)
+        const val EXTRA_URI = "uri"                     // alamat file hasil (untuk diputar)
+        const val EXTRA_SOURCE = "source"               // siapa yang memulai rekaman ini
+        const val EXTRA_NOTE = "note"                   // catatan tambahan (mis. gagal menggabungkan)
+        const val SOURCE_SCREEN = "screen"
+        const val SOURCE_AUDIO = "audio"
+        const val SOURCE_CONTINUE = "continue"
+
+        /** true selama ada rekaman berjalan / sedang disimpan. UI memakai ini agar tidak mulai ganda. */
+        @Volatile
+        var isRunning = false
+
         private const val CH_ID = "rec_channel"
         private const val NOTIF_ID = 4401
         private const val TAG = "RecordingService"
@@ -60,12 +77,19 @@ class RecordingService : Service() {
     private var outputPath: String = ""
     private var startTimeMs: Long = 0L
     private var wantMp3: Boolean = false
+    private var continueUri: Uri? = null
+    private var continueChannels: Int = 1
+    private var source: String = SOURCE_AUDIO
+    private var stoppedDurMs: Long = -1L
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                // Sudah ada rekaman berjalan / sedang disimpan → abaikan permintaan kedua
+                if (isRunning) return START_STICKY
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = if (Build.VERSION.SDK_INT >= 33) {
                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -81,7 +105,15 @@ class RecordingService : Service() {
                     audioFormat = intent.getIntExtra(EXTRA_AUDIO_FORMAT, RecorderConfig.FMT_AAC),
                     isScreen = intent.getBooleanExtra(EXTRA_IS_SCREEN, true)
                 )
-                startForegroundNotification()
+                continueUri = intent.getStringExtra(EXTRA_CONTINUE_URI)?.let { Uri.parse(it) }
+                continueChannels = intent.getIntExtra(EXTRA_CHANNELS, 1)
+                source = when {
+                    continueUri != null -> SOURCE_CONTINUE
+                    cfg.isScreen -> SOURCE_SCREEN
+                    else -> SOURCE_AUDIO
+                }
+                stoppedDurMs = -1L
+                startForegroundNotification(data != null)
                 if (data != null) {
                     val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                     mediaProjection = mgr.getMediaProjection(code, data)
@@ -90,19 +122,22 @@ class RecordingService : Service() {
                     if (cfg.isScreen) startScreen(cfg) else startAudio(cfg)
                     startTimeMs = System.currentTimeMillis()
                     wantMp3 = !cfg.isScreen && cfg.audioFormat == RecorderConfig.FMT_MP3
+                    isRunning = true
                     sendStatus("Rekaman dimulai", outputPath)
                 } catch (e: Exception) {
                     Log.e(TAG, "start failed", e)
+                    recording = false
                     sendStatus("Gagal: ${e.message}", "")
                     stopSelf()
                 }
             }
-            ACTION_STOP -> stopAll()
+            // Abaikan Stop kedua (mis. saat penggabungan masih berjalan) agar tidak diproses dua kali
+            ACTION_STOP -> if (recording) stopAll()
         }
         return START_STICKY
     }
 
-    private fun startForegroundNotification() {
+    private fun startForegroundNotification(hasProjection: Boolean) {
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = getSystemService(NotificationManager::class.java)
             val ch = NotificationChannel(CH_ID, "Rekaman", NotificationManager.IMPORTANCE_LOW)
@@ -113,7 +148,11 @@ class RecordingService : Service() {
             .setContentText("Ketuk notifikasi di app untuk berhenti")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .build()
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 34 && !hasProjection) {
+            // Android 14+: tipe mediaProjection hanya boleh dipakai setelah izin rekam layar diberikan.
+            // Rekam mikrofon saja (termasuk "lanjutkan rekaman") cukup memakai tipe microphone.
+            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else if (Build.VERSION.SDK_INT >= 29) {
             startForeground(
                 NOTIF_ID, notif,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
@@ -347,6 +386,7 @@ class RecordingService : Service() {
                 wavOut = FileOutputStream(f)
                 WavWriter.writeHeader(wavOut!!, rate, 1)
                 ar.startRecording()
+                recording = true // harus true sebelum thread jalan, kalau tidak loop bisa langsung berhenti
                 wavThread = Thread {
                     val buf = ByteArray(minBuf * 2)
                     try {
@@ -397,7 +437,7 @@ class RecordingService : Service() {
                     mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                     mr.setAudioEncodingBitRate(cfg.audioBitrate())
                     mr.setAudioSamplingRate(cfg.sampleRate)
-                    mr.setAudioChannels(1)
+                    mr.setAudioChannels(if (continueUri != null) continueChannels.coerceIn(1, 2) else 1)
                     mr.setOutputFile(outputPath)
                     mr.prepare()
                     mr.start()
@@ -407,6 +447,7 @@ class RecordingService : Service() {
     }
 
     private fun stopAll() {
+        stoppedDurMs = if (startTimeMs > 0) System.currentTimeMillis() - startTimeMs else 0L
         recording = false
         try { wavThread?.join(500) } catch (_: Exception) {}
         wavThread = null
@@ -425,8 +466,41 @@ class RecordingService : Service() {
         try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null
 
+        // Mode "Lanjutkan rekaman": gabungkan segmen baru ke file lama (di thread terpisah)
+        val cu = continueUri
+        if (cu != null) {
+            val segPath = outputPath
+            Thread {
+                var path = ""
+                var uri = cu.toString()
+                var note = ""
+                try {
+                    val seg = File(segPath)
+                    if (segPath.isNotEmpty() && seg.exists() && seg.length() > 0) {
+                        val r = AudioAppender.append(this@RecordingService, cu, seg)
+                        path = r.displayPath
+                        uri = r.uri?.toString() ?: uri
+                        note = r.note
+                    } else {
+                        note = "Tidak ada audio baru yang terekam."
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "append", e)
+                    note = "Gagal melanjutkan: ${e.message}"
+                }
+                mainHandler.post {
+                    isRunning = false
+                    sendStatus("Rekaman selesai", path, uri, note)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }.start()
+            return
+        }
+
         // Pindahkan ke folder publik Musik / Movies (bukan data app)
         var finalPath = outputPath
+        var finalUri = ""
         try {
             if (outputPath.isNotEmpty()) {
                 val f = File(outputPath)
@@ -437,24 +511,34 @@ class RecordingService : Service() {
                         outputPath.endsWith(".wav", true) -> "audio/wav"
                         else -> "audio/mp4"
                     }
-                    finalPath = PublicStorage.publishFile(this, f, isVideo, mime)
+                    val pub = PublicStorage.publishFileEx(this, f, isVideo, mime)
+                    finalPath = pub.displayPath
+                    finalUri = pub.uri?.toString() ?: ""
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "publish", e)
             finalPath = outputPath + " (gagal pindah publik: ${e.message})"
         }
-        sendStatus("Rekaman selesai", finalPath)
+        isRunning = false
+        sendStatus("Rekaman selesai", finalPath, finalUri)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun sendStatus(msg: String, path: String) {
+    private fun sendStatus(msg: String, path: String, uri: String = "", note: String = "") {
         val i = Intent(BROADCAST_STATUS)
         i.setPackage(packageName)
         i.putExtra(EXTRA_STATUS, msg)
         i.putExtra(EXTRA_PATH, path)
-        val dur = if (startTimeMs > 0) System.currentTimeMillis() - startTimeMs else 0L
+        i.putExtra(EXTRA_URI, uri)
+        i.putExtra(EXTRA_NOTE, note)
+        i.putExtra(EXTRA_SOURCE, source)
+        val dur = when {
+            stoppedDurMs >= 0 -> stoppedDurMs
+            startTimeMs > 0 -> System.currentTimeMillis() - startTimeMs
+            else -> 0L
+        }
         i.putExtra(EXTRA_DURATION_MS, dur)
         i.putExtra(EXTRA_WANT_MP3, wantMp3)
         sendBroadcast(i)
