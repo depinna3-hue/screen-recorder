@@ -133,9 +133,8 @@ class RecordingService : Service() {
     }
 
     private fun outDir(type: String): File {
-        val base = getExternalFilesDir(
-            if (type == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_MUSIC
-        ) ?: filesDir
+        // Sementara di cache; setelah stop dipindah ke Musik/Movies publik
+        val base = cacheDir
         if (!base.exists()) base.mkdirs()
         return base
     }
@@ -426,7 +425,26 @@ class RecordingService : Service() {
         try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null
 
-        sendStatus("Rekaman selesai", outputPath)
+        // Pindahkan ke folder publik Musik / Movies (bukan data app)
+        var finalPath = outputPath
+        try {
+            if (outputPath.isNotEmpty()) {
+                val f = File(outputPath)
+                if (f.exists() && f.length() > 0) {
+                    val isVideo = outputPath.endsWith(".mp4", true)
+                    val mime = when {
+                        isVideo -> "video/mp4"
+                        outputPath.endsWith(".wav", true) -> "audio/wav"
+                        else -> "audio/mp4"
+                    }
+                    finalPath = PublicStorage.publishFile(this, f, isVideo, mime)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "publish", e)
+            finalPath = outputPath + " (gagal pindah publik: ${e.message})"
+        }
+        sendStatus("Rekaman selesai", finalPath)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
