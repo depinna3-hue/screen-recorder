@@ -164,7 +164,7 @@ class AudioRecordFragment : Fragment() {
 
         btnStart = Button(ctx).apply {
             text = "Mulai rekam suara"
-            setOnClickListener { onStart() }
+            setOnClickListener { mulaiRekam() }
         }
         btnStop = Button(ctx).apply {
             text = "Stop"
@@ -202,7 +202,7 @@ class AudioRecordFragment : Fragment() {
         super.onStop()
     }
 
-    private fun onStart() {
+    private fun mulaiRekam() {
         val mode = spinMode.selectedItemPosition
         val needInternal = mode == RecorderConfig.AUDIO_INTERNAL || mode == RecorderConfig.AUDIO_INTERNAL_MIC
         if (needInternal) {
