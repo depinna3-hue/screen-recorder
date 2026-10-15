@@ -49,7 +49,11 @@ class ScreenRecordFragment : Fragment() {
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
+            // Hanya tanggapi rekaman layar dari tab ini (abaikan siaran suara / lanjutkan rekaman)
+            val src = i.getStringExtra(RecordingService.EXTRA_SOURCE) ?: RecordingService.SOURCE_SCREEN
+            if (src != RecordingService.SOURCE_SCREEN) return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
+            val uri = i.getStringExtra(RecordingService.EXTRA_URI) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
             if (msg.contains("selesai", true)) {
                 btnStart.isEnabled = true
@@ -58,11 +62,8 @@ class ScreenRecordFragment : Fragment() {
                 val durText = formatDuration(dur)
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan:\n$path" else ""
-                AlertDialog.Builder(requireContext())
-                    .setTitle("Rekaman dihentikan")
-                    .setMessage("Durasi: $durText" + if (path.isNotEmpty()) "\n\n$path" else "")
-                    .setPositiveButton("OK", null)
-                    .show()
+                // Tampilkan pemutar agar hasil rekaman bisa langsung ditonton
+                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
@@ -152,6 +153,10 @@ class ScreenRecordFragment : Fragment() {
     }
 
     private fun mulaiRekam() {
+        if (RecordingService.isRunning) {
+            status.text = "Masih ada rekaman yang berjalan. Hentikan dulu sebelum memulai yang baru."
+            return
+        }
         if (spinMode.selectedItemPosition != RecorderConfig.SCREEN_MIC && Build.VERSION.SDK_INT < 29) {
             status.text = "Mode internal audio hanya di Android 10+"
             return
