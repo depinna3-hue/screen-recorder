@@ -2,6 +2,7 @@ package com.kausar.scream
 
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -17,15 +18,11 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
+import java.io.File
 import java.util.Locale
 
-/**
- * Pemutar rekaman dalam dialog (suara = MediaPlayer, layar = VideoView).
- * Kontrol: Putar/Jeda, geser posisi, mundur/maju 10 detik.
- */
 object PlayerDialog {
 
-    /** 75000 → "01:15", 3725000 → "1:02:05" */
     fun clock(ms: Long): String {
         val total = (ms / 1000).coerceAtLeast(0)
         val h = total / 3600
@@ -36,27 +33,121 @@ object PlayerDialog {
     }
 
     /**
-     * Dipanggil setelah rekaman selesai (suara maupun layar).
-     * Bila alamat file (uri) tidak ada, tampilkan dialog info biasa seperti sebelumnya.
+     * Setelah rekaman selesai: dialog pilihan Simpan / Putar / Bagikan / Bagikan+simpan / Batal.
+     * uriStr & path mengarah ke file yang sudah dipublish (atau temp jika belum).
      */
     fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String, note: String = "") {
-        val subtitle = "Durasi: $durText" +
-            (if (path.isNotEmpty()) "\n\nLokasi:\n$path" else "") +
+        val wrapped = LanguageManager.wrap(ctx)
+        val durationLabel = wrapped.getString(R.string.duration)
+        val locationLabel = wrapped.getString(R.string.player_location)
+        val subtitle = "$durationLabel: $durText" +
+            (if (path.isNotEmpty()) "\n\n$locationLabel:\n$path" else "") +
             (if (note.isNotEmpty()) "\n\n$note" else "")
-        if (uriStr.isEmpty()) {
-            AlertDialog.Builder(ctx)
-                .setTitle("Rekaman dihentikan")
+
+        if (uriStr.isEmpty() && path.isEmpty()) {
+            AlertDialog.Builder(wrapped)
+                .setTitle(wrapped.getString(R.string.player_stopped))
                 .setMessage(subtitle)
-                .setPositiveButton("OK", null)
+                .setPositiveButton(wrapped.getString(R.string.player_ok), null)
                 .show()
             return
         }
-        val name = path.substringAfterLast('/').ifEmpty { "Rekaman" }
-        show(ctx, Uri.parse(uriStr), "Rekaman selesai · $name", subtitle, path.endsWith(".mp4", true), false)
+
+        val items = arrayOf(
+            wrapped.getString(R.string.action_save),
+            wrapped.getString(R.string.action_play),
+            wrapped.getString(R.string.action_share),
+            wrapped.getString(R.string.action_share_save),
+            wrapped.getString(R.string.action_cancel)
+        )
+
+        AlertDialog.Builder(wrapped)
+            .setTitle(wrapped.getString(R.string.action_title))
+            .setMessage(subtitle)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> {
+                        playUri(wrapped, uriStr, path, durText)
+                    }
+                    2 -> {
+                        share(wrapped, uriStr, path)
+                    }
+                    3 -> {
+                        share(wrapped, uriStr, path)
+                        Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
+                    }
+                    4 -> {
+                        // Batal: coba hapus file jika path lokal
+                        try {
+                            if (path.isNotEmpty()) {
+                                val f = File(path)
+                                if (f.exists()) f.delete()
+                            }
+                            if (uriStr.isNotEmpty()) {
+                                try {
+                                    wrapped.contentResolver.delete(Uri.parse(uriStr), null, null)
+                                } catch (_: Exception) {}
+                            }
+                        } catch (_: Exception) {}
+                        Toast.makeText(wrapped, wrapped.getString(R.string.action_discarded), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton(wrapped.getString(R.string.settings_close), null)
+            .show()
+    }
+
+    private fun playUri(ctx: Context, uriStr: String, path: String, durText: String) {
+        val wrapped = LanguageManager.wrap(ctx)
+        if (uriStr.isEmpty()) {
+            Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_LONG).show()
+            return
+        }
+        val name = path.substringAfterLast('/').ifEmpty { wrapped.getString(R.string.player_recording) }
+        val locationLabel = wrapped.getString(R.string.player_location)
+        val durationLabel = wrapped.getString(R.string.duration)
+        val subtitle = "$durationLabel: $durText" +
+            (if (path.isNotEmpty()) "\n\n$locationLabel:\n$path" else "")
+        show(
+            wrapped,
+            Uri.parse(uriStr),
+            "${wrapped.getString(R.string.player_title)} · $name",
+            subtitle,
+            path.endsWith(".mp4", true) || uriStr.contains("video", true),
+            true
+        )
+    }
+
+    private fun share(ctx: Context, uriStr: String, path: String) {
+        val wrapped = LanguageManager.wrap(ctx)
+        try {
+            val uri = when {
+                uriStr.isNotEmpty() -> Uri.parse(uriStr)
+                path.isNotEmpty() -> Uri.fromFile(File(path))
+                else -> null
+            }
+            if (uri == null) {
+                Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_SHORT).show()
+                return
+            }
+            val isVideo = path.endsWith(".mp4", true)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = if (isVideo) "video/*" else "audio/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            ctx.startActivity(Intent.createChooser(send, wrapped.getString(R.string.share_via)))
+        } catch (e: Exception) {
+            Toast.makeText(wrapped, e.message ?: "share", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun show(ctx: Context, uri: Uri, title: String, subtitle: String, isVideo: Boolean, autoPlay: Boolean) {
-        val density = ctx.resources.displayMetrics.density
+        val wrapped = LanguageManager.wrap(ctx)
+        val density = wrapped.resources.displayMetrics.density
         fun dp(v: Int): Int = (v * density + 0.5f).toInt()
 
         val handler = Handler(Looper.getMainLooper())
@@ -65,15 +156,14 @@ object PlayerDialog {
         var dismissed = false
 
         val player: MediaPlayer? = if (!isVideo) MediaPlayer() else null
-        val videoView: VideoView? = if (isVideo) VideoView(ctx) else null
+        val videoView: VideoView? = if (isVideo) VideoView(wrapped) else null
 
-        // ---------------------------------------------------------- tampilan
-        val root = LinearLayout(ctx).apply {
+        val root = LinearLayout(wrapped).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(12), dp(20), dp(4))
         }
         if (subtitle.isNotEmpty()) {
-            root.addView(TextView(ctx).apply {
+            root.addView(TextView(wrapped).apply {
                 text = subtitle
                 textSize = 12f
                 setTextColor(Color.parseColor("#6B7280"))
@@ -81,7 +171,7 @@ object PlayerDialog {
             })
         }
         if (videoView != null) {
-            val frame = FrameLayout(ctx).apply { setBackgroundColor(Color.BLACK) }
+            val frame = FrameLayout(wrapped).apply { setBackgroundColor(Color.BLACK) }
             frame.addView(
                 videoView,
                 FrameLayout.LayoutParams(
@@ -96,18 +186,18 @@ object PlayerDialog {
             )
         }
 
-        val seek = SeekBar(ctx).apply { isEnabled = false; max = 1 }
-        val cur = TextView(ctx).apply { text = "00:00"; textSize = 12f }
-        val tot = TextView(ctx).apply { text = "--:--"; textSize = 12f; gravity = Gravity.END }
-        val times = LinearLayout(ctx).apply {
+        val seek = SeekBar(wrapped).apply { isEnabled = false; max = 1 }
+        val cur = TextView(wrapped).apply { text = "00:00"; textSize = 12f }
+        val tot = TextView(wrapped).apply { text = "--:--"; textSize = 12f; gravity = Gravity.END }
+        val times = LinearLayout(wrapped).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(cur, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(tot, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        val btnBack = Button(ctx).apply { text = "« 10 dtk"; isEnabled = false }
-        val btnPlay = Button(ctx).apply { text = "Putar"; isEnabled = false }
-        val btnFwd = Button(ctx).apply { text = "10 dtk »"; isEnabled = false }
-        val controls = LinearLayout(ctx).apply {
+        val btnBack = Button(wrapped).apply { text = wrapped.getString(R.string.player_back); isEnabled = false }
+        val btnPlay = Button(wrapped).apply { text = wrapped.getString(R.string.player_play); isEnabled = false }
+        val btnFwd = Button(wrapped).apply { text = wrapped.getString(R.string.player_fwd); isEnabled = false }
+        val controls = LinearLayout(wrapped).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(btnBack, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(btnPlay, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -117,7 +207,6 @@ object PlayerDialog {
         root.addView(times)
         root.addView(controls)
 
-        // ------------------------------------------------------ akses pemutar
         fun posMs(): Int = try {
             if (videoView != null) videoView.currentPosition else player!!.currentPosition
         } catch (_: Exception) { 0 }
@@ -126,105 +215,95 @@ object PlayerDialog {
             if (videoView != null) videoView.duration else player!!.duration
         } catch (_: Exception) { 0 }
 
-        fun playing(): Boolean = try {
-            if (videoView != null) videoView.isPlaying else player!!.isPlaying
-        } catch (_: Exception) { false }
-
-        val tick = object : Runnable {
-            override fun run() {
-                if (dismissed) return
-                if (ready && !dragging) {
-                    val p = posMs()
-                    seek.progress = p
-                    cur.text = clock(p.toLong())
-                }
-                if (playing()) handler.postDelayed(this, 250)
-            }
-        }
-
-        fun startP() {
-            try {
-                if (videoView != null) videoView.start() else player!!.start()
-                btnPlay.text = "Jeda"
-                handler.removeCallbacks(tick)
-                handler.post(tick)
-            } catch (_: Exception) {}
-        }
-
-        fun pauseP() {
-            try {
-                if (videoView != null) videoView.pause() else player!!.pause()
-            } catch (_: Exception) {}
-            btnPlay.text = "Putar"
-        }
-
         fun seekP(ms: Int) {
             try {
                 if (videoView != null) videoView.seekTo(ms) else player!!.seekTo(ms)
             } catch (_: Exception) {}
         }
 
-        val onReady: () -> Unit = {
-            ready = true
-            val d = durMs()
-            seek.max = d.coerceAtLeast(1)
-            tot.text = clock(d.toLong())
-            seek.isEnabled = true
-            btnPlay.isEnabled = true
-            btnBack.isEnabled = true
-            btnFwd.isEnabled = true
-            if (autoPlay) startP()
+        fun isPlaying(): Boolean = try {
+            if (videoView != null) videoView.isPlaying else player!!.isPlaying
+        } catch (_: Exception) { false }
+
+        fun doPlay() {
+            try {
+                if (videoView != null) videoView.start() else player!!.start()
+                btnPlay.text = wrapped.getString(R.string.player_pause)
+            } catch (_: Exception) {}
         }
 
-        val onDone: () -> Unit = {
-            btnPlay.text = "Putar"
+        fun doPause() {
+            try {
+                if (videoView != null) videoView.pause() else player!!.pause()
+                btnPlay.text = wrapped.getString(R.string.player_play)
+            } catch (_: Exception) {}
+        }
+
+        val tick = object : Runnable {
+            override fun run() {
+                if (dismissed || !ready) return
+                if (!dragging) {
+                    val p = posMs()
+                    seek.progress = p
+                    cur.text = clock(p.toLong())
+                }
+                handler.postDelayed(this, 400)
+            }
+        }
+
+        fun onReady() {
+            ready = true
+            val d = durMs().coerceAtLeast(1)
+            seek.max = d
+            seek.isEnabled = true
+            tot.text = clock(d.toLong())
+            btnBack.isEnabled = true
+            btnPlay.isEnabled = true
+            btnFwd.isEnabled = true
+            handler.post(tick)
+            if (autoPlay) doPlay()
+        }
+
+        fun onDone() {
+            btnPlay.text = wrapped.getString(R.string.player_play)
             seek.progress = 0
             cur.text = "00:00"
-            seekP(0)
         }
 
-        val onError: () -> Unit = {
-            Toast.makeText(ctx, "Gagal memutar rekaman ini", Toast.LENGTH_LONG).show()
+        fun onError() {
+            Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_LONG).show()
+            btnPlay.text = wrapped.getString(R.string.player_play)
         }
 
-        // -------------------------------------------------------- tombol
         btnPlay.setOnClickListener {
-            if (ready) {
-                if (playing()) pauseP() else startP()
-            }
+            if (!ready) return@setOnClickListener
+            if (isPlaying()) doPause() else doPlay()
         }
         btnBack.setOnClickListener {
-            if (ready) {
-                val p = (posMs() - 10_000).coerceAtLeast(0)
-                seekP(p)
-                seek.progress = p
-                cur.text = clock(p.toLong())
-            }
+            if (!ready) return@setOnClickListener
+            val p = (posMs() - 10_000).coerceAtLeast(0)
+            seekP(p)
+            seek.progress = p
+            cur.text = clock(p.toLong())
         }
         btnFwd.setOnClickListener {
-            if (ready) {
-                val p = (posMs() + 10_000).coerceAtMost(durMs())
-                seekP(p)
-                seek.progress = p
-                cur.text = clock(p.toLong())
-            }
+            if (!ready) return@setOnClickListener
+            val p = (posMs() + 10_000).coerceAtMost(durMs())
+            seekP(p)
+            seek.progress = p
+            cur.text = clock(p.toLong())
         }
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) cur.text = clock(progress.toLong())
             }
-
-            override fun onStartTrackingTouch(sb: SeekBar?) {
-                dragging = true
-            }
-
+            override fun onStartTrackingTouch(sb: SeekBar?) { dragging = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
                 dragging = false
                 if (ready) seekP(sb?.progress ?: 0)
             }
         })
 
-        // -------------------------------------------------------- siapkan media
         try {
             if (videoView != null) {
                 videoView.setOnPreparedListener { onReady() }
@@ -239,7 +318,7 @@ object PlayerDialog {
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 )
-                p.setDataSource(ctx, uri)
+                p.setDataSource(wrapped, uri)
                 p.setOnPreparedListener { onReady() }
                 p.setOnCompletionListener { onDone() }
                 p.setOnErrorListener { _, _, _ -> onError(); true }
@@ -247,14 +326,14 @@ object PlayerDialog {
             }
         } catch (e: Exception) {
             try { player?.release() } catch (_: Exception) {}
-            Toast.makeText(ctx, "Tidak bisa memutar: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(wrapped, wrapped.getString(R.string.player_fail_msg, e.message ?: ""), Toast.LENGTH_LONG).show()
             return
         }
 
-        val dialog = AlertDialog.Builder(ctx)
+        val dialog = AlertDialog.Builder(wrapped)
             .setTitle(title)
             .setView(root)
-            .setPositiveButton("Tutup", null)
+            .setPositiveButton(wrapped.getString(R.string.player_close), null)
             .create()
         dialog.setOnDismissListener {
             dismissed = true
