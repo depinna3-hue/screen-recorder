@@ -1,7 +1,6 @@
 package com.kausar.scream
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.*
 import android.graphics.Color
 import android.graphics.Typeface
@@ -25,13 +24,18 @@ class AudioRecordFragment : Fragment() {
     private lateinit var status: TextView
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
+    private lateinit var btnBookmark: Button
+    private lateinit var chkStereo: CheckBox
+    private lateinit var chkNoise: CheckBox
+    private lateinit var chkSilence: CheckBox
+    private lateinit var chkGain: CheckBox
+    private lateinit var chkWhisper: CheckBox
 
     private val modes = arrayOf(
         "Mikrofon HP saja",
         "Internal audio",
         "Internal audio + mikrofon HP"
     )
-    // Jujur: tidak ada encoder MP3 bawaan Android
     private val formats = arrayOf("AAC (.m4a)", "WAV (.wav)")
     private val samples = arrayOf("48000 Hz", "44100 Hz", "32000 Hz", "22050 Hz", "16000 Hz")
     private val sampleVals = intArrayOf(48000, 44100, 32000, 22050, 16000)
@@ -44,13 +48,13 @@ class AudioRecordFragment : Fragment() {
             launchService(result.resultCode, result.data!!)
         } else {
             status.text = "Izin ditolak. Audio internal memerlukan izin rekam layar."
+            status.contentDescription = status.text
         }
     }
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
-            // Hanya tanggapi rekaman suara dari tab ini (abaikan siaran layar / lanjutkan rekaman)
             val src = i.getStringExtra(RecordingService.EXTRA_SOURCE) ?: RecordingService.SOURCE_AUDIO
             if (src != RecordingService.SOURCE_AUDIO) return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
@@ -61,19 +65,23 @@ class AudioRecordFragment : Fragment() {
             if (msg.contains("selesai", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
+                btnBookmark.isEnabled = false
                 setSpinnersEnabled(true)
                 val durText = formatDuration(dur)
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan di Musik:\n$path" else ""
-                // Tampilkan pemutar agar hasil rekaman bisa langsung didengar
+                status.contentDescription = status.text
                 PlayerDialog.showAfterRecording(requireContext(), uri, path, durText, note)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
+                btnBookmark.isEnabled = false
                 setSpinnersEnabled(true)
                 status.text = msg
+                status.contentDescription = msg
             } else {
                 status.text = if (path.isNotEmpty()) "$msg\n$path" else msg
+                status.contentDescription = status.text
             }
         }
     }
@@ -94,45 +102,76 @@ class AudioRecordFragment : Fragment() {
         }
 
         root.addView(title(ctx, "Perekam suara"))
-        root.addView(hint(ctx, "File disimpan ke folder Musik/KausarRecorder (bukan data app).\nFormat nyata: AAC atau WAV. Internal audio = Android 10+."))
+        root.addView(hint(ctx, "File disimpan ke folder Musik/KausarRecorder.\nFormat: AAC atau WAV. Internal audio = Android 10+.\nFitur lanjutan tersedia pada format WAV."))
 
         root.addView(label(ctx, "Sumber audio"))
         spinMode = spinner(ctx, modes)
+        spinMode.contentDescription = "Pilih sumber audio"
         root.addView(spinMode)
 
         root.addView(label(ctx, "Format file"))
         spinFormat = spinner(ctx, formats)
+        spinFormat.contentDescription = "Pilih format file rekaman"
         root.addView(spinFormat)
 
         root.addView(label(ctx, "Sample rate"))
         spinSample = spinner(ctx, samples)
         spinSample.setSelection(1)
+        spinSample.contentDescription = "Pilih sample rate"
         root.addView(spinSample)
 
         root.addView(label(ctx, "Kualitas audio"))
         spinQuality = spinner(ctx, qualities)
         spinQuality.setSelection(1)
+        spinQuality.contentDescription = "Pilih kualitas audio"
         root.addView(spinQuality)
+
+        root.addView(label(ctx, "Fitur Raksasa"))
+        chkStereo = checkBox(ctx, "Paksa Stereo (meski mic mono jadi stereo)", true)
+        root.addView(chkStereo)
+        chkNoise = checkBox(ctx, "Mode Noise (tambah noise ke mikrofon)", false)
+        root.addView(chkNoise)
+        chkSilence = checkBox(ctx, "Lewati Keheningan Cerdas (skip silence)", false)
+        root.addView(chkSilence)
+        chkGain = checkBox(ctx, "Penguat Dinamis (AGC / boost suara pelan)", false)
+        root.addView(chkGain)
+        chkWhisper = checkBox(ctx, "Mode Bisik (sensitivitas tinggi untuk suara pelan)", false)
+        root.addView(chkWhisper)
 
         btnStart = Button(ctx).apply {
             text = "Mulai rekam suara"
+            contentDescription = "Tombol mulai rekam suara"
             setOnClickListener { mulaiRekam() }
         }
         btnStop = Button(ctx).apply {
             text = "Stop"
             isEnabled = false
+            contentDescription = "Tombol hentikan rekaman"
             setOnClickListener {
                 val i = Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_STOP)
                 ctx.startService(i)
             }
         }
+        btnBookmark = Button(ctx).apply {
+            text = "Tandai Bookmark"
+            isEnabled = false
+            contentDescription = "Tombol tambah bookmark timestamp saat rekaman berjalan"
+            setOnClickListener {
+                val i = Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_BOOKMARK)
+                ctx.startService(i)
+                status.text = "Bookmark ditambahkan pada posisi saat ini."
+                status.contentDescription = status.text
+            }
+        }
         root.addView(btnStart)
         root.addView(btnStop)
+        root.addView(btnBookmark)
 
         status = TextView(ctx).apply {
             text = "Siap."
             setTextColor(Color.parseColor("#374151"))
             setPadding(0, dp(12), 0, 0)
+            contentDescription = "Status rekaman: Siap"
         }
         root.addView(status)
 
@@ -157,6 +196,7 @@ class AudioRecordFragment : Fragment() {
     private fun mulaiRekam() {
         if (RecordingService.isRunning) {
             status.text = "Masih ada rekaman yang berjalan. Hentikan dulu sebelum memulai yang baru."
+            status.contentDescription = status.text
             return
         }
         val mode = spinMode.selectedItemPosition
@@ -164,10 +204,12 @@ class AudioRecordFragment : Fragment() {
         if (needInternal) {
             if (Build.VERSION.SDK_INT < 29) {
                 status.text = "Audio internal hanya di Android 10+"
+                status.contentDescription = status.text
                 return
             }
             val mgr = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             status.text = "Izin rekam layar diperlukan untuk audio internal..."
+            status.contentDescription = status.text
             projectionLauncher.launch(mgr.createScreenCaptureIntent())
         } else {
             launchService(0, Intent())
@@ -187,12 +229,19 @@ class AudioRecordFragment : Fragment() {
             putExtra(RecordingService.EXTRA_AUDIO_QUALITY, spinQuality.selectedItemPosition)
             putExtra(RecordingService.EXTRA_VIDEO_QUALITY, 1)
             putExtra(RecordingService.EXTRA_AUDIO_FORMAT, fmt)
+            putExtra(RecordingService.EXTRA_FORCE_STEREO, chkStereo.isChecked)
+            putExtra(RecordingService.EXTRA_NOISE, chkNoise.isChecked)
+            putExtra(RecordingService.EXTRA_SKIP_SILENCE, chkSilence.isChecked)
+            putExtra(RecordingService.EXTRA_DYNAMIC_GAIN, chkGain.isChecked)
+            putExtra(RecordingService.EXTRA_WHISPER, chkWhisper.isChecked)
         }
         if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
         btnStart.isEnabled = false
         btnStop.isEnabled = true
+        btnBookmark.isEnabled = true
         setSpinnersEnabled(false)
         status.text = "Rekaman suara berjalan..."
+        status.contentDescription = status.text
     }
 
     private fun setSpinnersEnabled(en: Boolean) {
@@ -200,6 +249,11 @@ class AudioRecordFragment : Fragment() {
         spinFormat.isEnabled = en
         spinSample.isEnabled = en
         spinQuality.isEnabled = en
+        chkStereo.isEnabled = en
+        chkNoise.isEnabled = en
+        chkSilence.isEnabled = en
+        chkGain.isEnabled = en
+        chkWhisper.isEnabled = en
     }
 
     private fun dp(v: Int) = TypedValue.applyDimension(
@@ -209,18 +263,29 @@ class AudioRecordFragment : Fragment() {
     private fun title(ctx: Context, t: String) = TextView(ctx).apply {
         text = t; textSize = 18f; setTypeface(typeface, Typeface.BOLD)
         setTextColor(Color.parseColor("#111827")); setPadding(0, 0, 0, dp(6))
+        contentDescription = t
     }
 
     private fun hint(ctx: Context, t: String) = TextView(ctx).apply {
         text = t; textSize = 12f; setTextColor(Color.parseColor("#6B7280")); setPadding(0, 0, 0, dp(10))
+        contentDescription = t
     }
 
     private fun label(ctx: Context, t: String) = TextView(ctx).apply {
         text = t; textSize = 13f; setTypeface(typeface, Typeface.BOLD)
         setTextColor(Color.parseColor("#111827")); setPadding(0, dp(10), 0, dp(4))
+        contentDescription = t
     }
 
     private fun spinner(ctx: Context, items: Array<String>) = Spinner(ctx).apply {
         adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, items)
+    }
+
+    private fun checkBox(ctx: Context, label: String, checked: Boolean) = CheckBox(ctx).apply {
+        text = label
+        isChecked = checked
+        contentDescription = label
+        setTextColor(Color.parseColor("#111827"))
+        setPadding(0, dp(4), 0, dp(4))
     }
 }
