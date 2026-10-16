@@ -25,7 +25,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var btnBookmark: Button
-    private lateinit var spinMode: Spinner
+    private lateinit var spinRecType: Spinner
+    private lateinit var spinMic: Spinner
     private lateinit var spinFormat: Spinner
     private lateinit var spinSample: Spinner
     private lateinit var spinEffect: Spinner
@@ -46,9 +47,9 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            launchService(result.resultCode, result.data!!, true)
+            launchService(result.resultCode, result.data!!, spinRecType.selectedItemPosition == 0)
         } else {
-            setStatus(getString(R.string.status_failed) + ": izin layar ditolak")
+            setStatus(getString(R.string.status_failed) + ": " + getString(R.string.status_projection_denied))
         }
     }
 
@@ -60,16 +61,18 @@ class MainActivity : AppCompatActivity() {
             val note = i.getStringExtra(RecordingService.EXTRA_NOTE) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
 
-            if (msg.contains("selesai", true) || msg.contains("stopped", true)) {
+            if (msg.contains("selesai", true) || msg.contains("stopped", true) ||
+                msg.contains(getString(R.string.status_stopped), true)
+            ) {
                 setRecordingUi(false)
                 val durText = formatDuration(dur)
                 setStatus("${getString(R.string.status_stopped)}\n${getString(R.string.duration)}: $durText" +
                     if (path.isNotEmpty()) "\n${getString(R.string.saved_to)}:\n$path" else "")
-                if (uri.isNotEmpty() || path.isNotEmpty()) {
-                    PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
-                }
+                PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
                 refreshList()
-            } else if (msg.contains("Gagal", true) || msg.contains("Failed", true)) {
+            } else if (msg.contains("Gagal", true) || msg.contains("Failed", true) ||
+                msg.contains(getString(R.string.status_failed), true)
+            ) {
                 setRecordingUi(false)
                 setStatus(msg)
             } else {
@@ -88,6 +91,8 @@ class MainActivity : AppCompatActivity() {
             buildUi()
             requestAllPermissions()
             refreshList()
+            // Toast developer — hardcoded, bukan string resource
+            Toast.makeText(this, "Developer by Alkausar", Toast.LENGTH_LONG).show()
         } catch (t: Throwable) {
             val tv = TextView(this)
             tv.text = "Error:\n${t.message}"
@@ -125,14 +130,23 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).also { it.bottomMargin = dp(10) })
 
-        root.addView(section(getString(R.string.section_mode)))
-        spinMode = spinner(arrayOf(
-            getString(R.string.mode_screen),
+        // Spinner 1: jenis rekaman
+        root.addView(section(getString(R.string.section_rec_type)))
+        spinRecType = spinner(arrayOf(
+            getString(R.string.rec_type_screen),
+            getString(R.string.rec_type_audio)
+        ))
+        root.addView(spinRecType)
+
+        // Spinner 2: sumber mikrofon/audio
+        root.addView(section(getString(R.string.section_mic_source)))
+        spinMic = spinner(arrayOf(
             getString(R.string.mode_mic),
             getString(R.string.mode_internal),
-            getString(R.string.mode_internal_mic)
+            getString(R.string.mode_internal_mic),
+            getString(R.string.mode_screen)
         ))
-        root.addView(spinMode)
+        root.addView(spinMic)
 
         root.addView(section(getString(R.string.section_format)))
         spinFormat = spinner(arrayOf(getString(R.string.format_aac), getString(R.string.format_wav)))
@@ -225,6 +239,16 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_settings)
             setOnClickListener { showSettings() }
         })
+        root.addView(Button(this).apply {
+            text = getString(R.string.btn_help)
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.help_title))
+                    .setMessage(getString(R.string.help_body))
+                    .setPositiveButton(getString(R.string.player_ok), null)
+                    .show()
+            }
+        })
 
         status = TextView(this).apply {
             text = getString(R.string.status_ready)
@@ -247,19 +271,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun mulaiRekam() {
         if (RecordingService.isRunning) {
-            setStatus("Masih ada rekaman berjalan. Hentikan dulu.")
+            setStatus(getString(R.string.status_already_running))
             return
         }
-        val modePos = spinMode.selectedItemPosition
-        val isScreen = modePos == 0
-        val needInternal = modePos == 2 || modePos == 3
+        val isScreen = spinRecType.selectedItemPosition == 0
+        val micPos = spinMic.selectedItemPosition
+        // mic: 0=mic only, 1=internal, 2=internal+mic, 3=screen+mic (legacy label)
+        val needInternal = micPos == 1 || micPos == 2
         if (isScreen || needInternal) {
             if (needInternal && Build.VERSION.SDK_INT < 29) {
-                setStatus("Audio internal hanya di Android 10+")
+                setStatus(getString(R.string.status_internal_api))
                 return
             }
             val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            setStatus("Menunggu izin rekam layar…")
+            setStatus(getString(R.string.status_need_projection))
             projectionLauncher.launch(mgr.createScreenCaptureIntent())
         } else {
             launchService(0, Intent(), false)
@@ -267,12 +292,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchService(code: Int, data: Intent, isScreen: Boolean) {
-        val modePos = spinMode.selectedItemPosition
-        val cfgMode = when (modePos) {
-            0 -> RecorderConfig.SCREEN_MIC
-            1 -> RecorderConfig.AUDIO_MIC
-            2 -> RecorderConfig.AUDIO_INTERNAL
-            else -> RecorderConfig.AUDIO_INTERNAL_MIC
+        val micPos = spinMic.selectedItemPosition
+        val cfgMode = when {
+            isScreen -> when (micPos) {
+                1 -> RecorderConfig.SCREEN_INTERNAL
+                2 -> RecorderConfig.SCREEN_INTERNAL // internal+mic approximated
+                else -> RecorderConfig.SCREEN_MIC
+            }
+            else -> when (micPos) {
+                1 -> RecorderConfig.AUDIO_INTERNAL
+                2 -> RecorderConfig.AUDIO_INTERNAL_MIC
+                else -> RecorderConfig.AUDIO_MIC
+            }
         }
         val fmt = if (spinFormat.selectedItemPosition == 1) RecorderConfig.FMT_WAV else RecorderConfig.FMT_AAC
         val i = Intent(this, RecordingService::class.java).apply {
@@ -303,7 +334,8 @@ class MainActivity : AppCompatActivity() {
         btnStart.isEnabled = !running
         btnStop.isEnabled = running
         btnBookmark.isEnabled = running
-        spinMode.isEnabled = !running
+        spinRecType.isEnabled = !running
+        spinMic.isEnabled = !running
         spinFormat.isEnabled = !running
         spinSample.isEnabled = !running
         spinEffect.isEnabled = !running
