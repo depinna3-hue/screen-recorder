@@ -26,15 +26,15 @@ object PublicStorage {
             val values = ContentValues().apply {
                 put(MediaStore.Audio.Media.DISPLAY_NAME, name)
                 put(MediaStore.Audio.Media.MIME_TYPE, mime)
-                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/KausarRecorder")
+                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/KausarRecorder/Audio")
                 put(MediaStore.Audio.Media.IS_PENDING, 1)
             }
             val uri = ctx.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
                 ?: throw IllegalStateException("Gagal membuat entri Musik")
-            Target(null, uri, "Musik/KausarRecorder/$name")
+            Target(null, uri, "Musik/KausarRecorder/Audio/$name")
         } else {
             @Suppress("DEPRECATION")
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "KausarRecorder")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "KausarRecorder/Audio")
             if (!dir.exists()) dir.mkdirs()
             val f = File(dir, name)
             Target(f, null, f.absolutePath)
@@ -46,15 +46,15 @@ object PublicStorage {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, name)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/KausarRecorder")
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/KausarRecorder/Screen")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
             val uri = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
                 ?: throw IllegalStateException("Gagal membuat entri Movies")
-            Target(null, uri, "Movies/KausarRecorder/$name")
+            Target(null, uri, "Movies/KausarRecorder/Screen/$name")
         } else {
             @Suppress("DEPRECATION")
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "KausarRecorder")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "KausarRecorder/Screen")
             if (!dir.exists()) dir.mkdirs()
             val f = File(dir, name)
             Target(f, null, f.absolutePath)
