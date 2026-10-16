@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         try {
             buildUi()
+            PublicStorage.ensureFolders(this)
             requestAllPermissions()
             refreshList()
             // Toast developer — hardcoded, bukan string resource
@@ -128,7 +129,19 @@ class MainActivity : AppCompatActivity() {
         root.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).also { it.bottomMargin = dp(10) })
+        ).also { it.bottomMargin = dp(6) })
+
+        // Petunjuk langsung setelah nama/header
+        root.addView(Button(this).apply {
+            text = getString(R.string.btn_help)
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.help_title))
+                    .setMessage(getString(R.string.help_body))
+                    .setPositiveButton(getString(R.string.player_ok), null)
+                    .show()
+            }
+        })
 
         // Spinner 1: jenis rekaman
         root.addView(section(getString(R.string.section_rec_type)))
@@ -239,17 +252,6 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_settings)
             setOnClickListener { showSettings() }
         })
-        root.addView(Button(this).apply {
-            text = getString(R.string.btn_help)
-            setOnClickListener {
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle(getString(R.string.help_title))
-                    .setMessage(getString(R.string.help_body))
-                    .setPositiveButton(getString(R.string.player_ok), null)
-                    .show()
-            }
-        })
-
         status = TextView(this).apply {
             text = getString(R.string.status_ready)
             setTextColor(Color.parseColor("#374151"))
