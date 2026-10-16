@@ -55,6 +55,7 @@ class AudioRecordFragment : Fragment() {
             if (src != RecordingService.SOURCE_AUDIO) return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
             val uri = i.getStringExtra(RecordingService.EXTRA_URI) ?: ""
+            val note = i.getStringExtra(RecordingService.EXTRA_NOTE) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
 
             if (msg.contains("selesai", true)) {
@@ -65,7 +66,7 @@ class AudioRecordFragment : Fragment() {
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan di Musik:\n$path" else ""
                 // Tampilkan pemutar agar hasil rekaman bisa langsung didengar
-                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText)
+                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText, note)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
