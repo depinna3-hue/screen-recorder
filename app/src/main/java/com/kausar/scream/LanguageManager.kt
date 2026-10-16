@@ -67,8 +67,12 @@ object LanguageManager {
     private const val KEY = "lang_code"
 
     fun getSavedCode(ctx: Context): String {
-        return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getString(KEY, "in") ?: "in"
+        val prefs = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY, null)
+        if (!saved.isNullOrEmpty()) return saved
+        // Ikuti bahasa perangkat jika belum dipilih
+        val sys = java.util.Locale.getDefault().language
+        return if (LANGUAGES.any { it.code == sys }) sys else "en"
     }
 
     fun saveCode(ctx: Context, code: String) {
