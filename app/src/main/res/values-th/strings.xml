@@ -82,6 +82,52 @@
     <string name="notif_resume">Resume</string>
     <string name="notif_stop">Stop</string>
     <string name="help_title">How to use</string>
-    <string name="help_body">Kausar Recorder is developed by Alkausar.\n\n• Recording type: choose Screen or Voice.\n• Audio source: Microphone only, Internal audio, or Internal + mic.\n• Format: AAC or WAV.\n• Effects: Studio (clean), Flanger, Echo, V8 Reverb.\n• Microphone strength: adjust input volume.\n• Noise level: adjust soft background noise (optional).\n• Force stereo: widen mono to stereo.\n• Noise mode: soft Windows-like noise floor.\n• Skip silence: ignore very quiet parts.\n• Dynamic gain: boost quiet speech automatically.\n• Bookmark: mark timestamps while recording.\n• Files are saved under KausarRecorder (Audio / Screen).\n• While recording, use the notification for Pause / Resume / Stop.\n\nAfter stop, choose Save, Play, Share, or Share and save.</string>
+    <string name="help_body">Kausar Recorder is developed by Alkausar. Record screen and voice with audio effects.
+
+=== RECORDING TYPE ===
+• Screen recording: capture the phone display (needs screen capture permission).
+• Voice recording: audio only, no video.
+
+=== MICROPHONE / AUDIO SOURCE ===
+• Microphone only: phone mic.
+• Internal audio: sound from other apps (Android 10+).
+• Internal + microphone: both mixed.
+• Screen + microphone: screen video with mic audio.
+
+=== FORMAT ===
+• AAC (.m4a): smaller files, good for long-term storage.
+• WAV (.wav): higher quality; used automatically when effects are on.
+
+=== AUDIO EFFECTS ===
+• Studio: clean sound, no effect.
+• Flanger: light modulation.
+• Echo: clear single echo.
+• Reverb (V8): multi-tap stereo reverb like a V8 sound card.
+
+=== SLIDERS ===
+• Microphone strength: 100% is normal; raise if quiet, lower if clipping.
+• Noise level: amount of soft noise when noise mode is on (0% = off).
+
+=== CHECKBOXES ===
+• Force stereo: on = convert mono to wide stereo; off = keep mono.
+• Noise mode: on = soft Windows-like noise floor; off = no noise.
+• Skip silence: on = skip very quiet parts (smaller files); off = record everything.
+• Dynamic gain (AGC): on = boost quiet speech; off = fixed volume.
+
+=== BUTTONS ===
+• Start recording: begin a session.
+• Stop: end and open Save / Play / Share dialog.
+• Add bookmark: mark a timestamp while recording.
+• Settings: change app language.
+• Read guide: show this help.
+• Refresh list: reload saved files.
+
+=== NOTIFICATION ===
+While recording, use the notification for Pause / Resume / Stop without opening the app.
+
+=== STORAGE ===
+Files go under KausarRecorder:
+• Music/KausarRecorder/Audio — voice
+• Movies/KausarRecorder/Screen — screen</string>
     <string name="bookmark_added">Bookmark added at %1$d seconds</string>
 </resources>
