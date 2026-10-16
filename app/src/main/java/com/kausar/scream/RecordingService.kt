@@ -46,6 +46,13 @@ class RecordingService : Service() {
         const val EXTRA_SKIP_SILENCE = "skip_silence"
         const val EXTRA_DYNAMIC_GAIN = "dynamic_gain"
         const val EXTRA_WHISPER = "whisper"
+        const val EXTRA_MIC_GAIN = "mic_gain"
+        const val EXTRA_NOISE_LEVEL = "noise_level"
+        const val EXTRA_EFFECT = "effect"
+        const val EFFECT_STUDIO = 0
+        const val EFFECT_FLANGER = 1
+        const val EFFECT_ECHO = 2
+        const val EFFECT_REVERB = 3
 
         const val BROADCAST_STATUS = "com.kausar.scream.STATUS"
         const val EXTRA_STATUS = "status"
@@ -93,6 +100,9 @@ class RecordingService : Service() {
     private var skipSilence = false
     private var dynamicGain = false
     private var whisperMode = false
+    private var micGain = 1.0f
+    private var noiseLevel = 0.3f
+    private var effectMode = 0
     private val bookmarks = ArrayList<Long>()
     private var noiseSeed = 12345L
     private val projectionCallback = object : MediaProjection.Callback() {
@@ -129,6 +139,9 @@ class RecordingService : Service() {
                 skipSilence = intent.getBooleanExtra(EXTRA_SKIP_SILENCE, false)
                 dynamicGain = intent.getBooleanExtra(EXTRA_DYNAMIC_GAIN, false)
                 whisperMode = intent.getBooleanExtra(EXTRA_WHISPER, false)
+                micGain = intent.getFloatExtra(EXTRA_MIC_GAIN, 1.0f).coerceIn(0.1f, 2.0f)
+                noiseLevel = intent.getFloatExtra(EXTRA_NOISE_LEVEL, 0.3f).coerceIn(0f, 1f)
+                effectMode = intent.getIntExtra(EXTRA_EFFECT, EFFECT_STUDIO)
                 bookmarks.clear()
                 continueUri = intent.getStringExtra(EXTRA_CONTINUE_URI)?.let { Uri.parse(it) }
                 continueChannels = intent.getIntExtra(EXTRA_CHANNELS, 1)
@@ -321,7 +334,12 @@ class RecordingService : Service() {
             val buf = ByteArray(bufSize)
             var silenceRun = 0
             val silenceThresh = if (skipSilence) 800 else 0
-            var gain = 1.0f
+            var agcGain = 1.0f
+            // Buffer delay untuk efek (echo/reverb/flanger) — ~120ms max
+            val delayLen = (rate * 0.12).toInt().coerceAtLeast(64)
+            val delayBuf = ShortArray(delayLen)
+            var delayPos = 0
+            var flangePhase = 0.0
             try {
                 while (recording && !Thread.interrupted()) {
                     val n = ar.read(buf, 0, buf.size)
@@ -329,57 +347,89 @@ class RecordingService : Service() {
                     var writeBuf = buf
                     var writeLen = n
 
-                    if (enableNoise || dynamicGain || skipSilence || (forceStereo && inChannels == 1 && channels == 2)) {
-                        val samples = ShortArray(n / 2)
-                        java.nio.ByteBuffer.wrap(buf, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
-                        var peak = 0
-                        for (i in samples.indices) {
-                            val a = kotlin.math.abs(samples[i].toInt())
-                            if (a > peak) peak = a
-                        }
+                    val samples = ShortArray(n / 2)
+                    java.nio.ByteBuffer.wrap(buf, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
+                    var peak = 0
+                    for (i in samples.indices) {
+                        val a = kotlin.math.abs(samples[i].toInt())
+                        if (a > peak) peak = a
+                    }
 
-                        if (dynamicGain) {
-                            if (peak < 2000) gain = (gain * 1.02f).coerceAtMost(8f)
-                            else if (peak > 12000) gain = (gain * 0.95f).coerceAtLeast(1f)
-                        }
+                    if (dynamicGain) {
+                        if (peak < 2000) agcGain = (agcGain * 1.02f).coerceAtMost(8f)
+                        else if (peak > 12000) agcGain = (agcGain * 0.95f).coerceAtLeast(1f)
+                    }
 
-                        if (skipSilence) {
-                            if (peak < silenceThresh) {
-                                silenceRun++
-                                if (silenceRun > rate / 50) continue
-                            } else {
-                                silenceRun = 0
-                            }
-                        }
-
-                        for (i in samples.indices) {
-                            var s = samples[i].toInt()
-                            if (dynamicGain) s = (s * gain).toInt().coerceIn(-32768, 32767)
-                            if (enableNoise) {
-                                // Noise lembut mirip floor noise Windows: suara tetap jernih
-                                noiseSeed = noiseSeed * 1103515245L + 12345L
-                                val raw = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
-                                // Amplitudo sangat rendah (~1.5% full scale) agar voice tetap jelas
-                                val softNoise = raw / 64
-                                s = (s + softNoise).coerceIn(-32768, 32767)
-                            }
-                            samples[i] = s.toShort()
-                        }
-
-                        if (forceStereo && inChannels == 1 && channels == 2) {
-                            val stereo = ShortArray(samples.size * 2)
-                            for (i in samples.indices) {
-                                stereo[i * 2] = samples[i]
-                                stereo[i * 2 + 1] = samples[i]
-                            }
-                            writeBuf = ByteArray(stereo.size * 2)
-                            java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(stereo)
-                            writeLen = writeBuf.size
+                    if (skipSilence) {
+                        if (peak < silenceThresh) {
+                            silenceRun++
+                            if (silenceRun > rate / 50) continue
                         } else {
-                            writeBuf = ByteArray(samples.size * 2)
-                            java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(samples)
-                            writeLen = writeBuf.size
+                            silenceRun = 0
                         }
+                    }
+
+                    for (i in samples.indices) {
+                        var s = samples[i].toFloat()
+                        // Mic gain slider
+                        s *= micGain
+                        if (dynamicGain) s *= agcGain
+
+                        // Soft noise (level dari slider)
+                        if (enableNoise && noiseLevel > 0f) {
+                            noiseSeed = noiseSeed * 1103515245L + 12345L
+                            val raw = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
+                            s += raw * noiseLevel * 0.04f
+                        }
+
+                        // Efek audio
+                        when (effectMode) {
+                            EFFECT_FLANGER -> {
+                                flangePhase += 0.0008
+                                val flangeDelay = (8 + 6 * kotlin.math.sin(flangePhase)).toInt().coerceIn(1, delayLen - 1)
+                                val di = (delayPos - flangeDelay + delayLen) % delayLen
+                                s = s * 0.7f + delayBuf[di] * 0.3f
+                            }
+                            EFFECT_ECHO -> {
+                                val echoDelay = (rate * 0.08).toInt().coerceIn(1, delayLen - 1)
+                                val di = (delayPos - echoDelay + delayLen) % delayLen
+                                s = s + delayBuf[di] * 0.35f
+                            }
+                            EFFECT_REVERB -> {
+                                // Gema multi-tap mirip soundcard V8
+                                val d1 = (rate * 0.03).toInt().coerceIn(1, delayLen - 1)
+                                val d2 = (rate * 0.06).toInt().coerceIn(1, delayLen - 1)
+                                val d3 = (rate * 0.09).toInt().coerceIn(1, delayLen - 1)
+                                val a1 = delayBuf[(delayPos - d1 + delayLen) % delayLen]
+                                val a2 = delayBuf[(delayPos - d2 + delayLen) % delayLen]
+                                val a3 = delayBuf[(delayPos - d3 + delayLen) % delayLen]
+                                s = s * 0.65f + a1 * 0.2f + a2 * 0.1f + a3 * 0.05f
+                            }
+                        }
+
+                        val outS = s.toInt().coerceIn(-32768, 32767).toShort()
+                        delayBuf[delayPos] = outS
+                        delayPos = (delayPos + 1) % delayLen
+                        samples[i] = outS
+                    }
+
+                    // Stereo: mono → L/R dengan sedikit beda waktu agar terasa lebar
+                    if (forceStereo && inChannels == 1 && channels == 2) {
+                        val stereo = ShortArray(samples.size * 2)
+                        for (i in samples.indices) {
+                            stereo[i * 2] = samples[i]
+                            // kanal kanan sedikit dari buffer delay agar tidak identik
+                            val di = (delayPos - 12 + delayLen) % delayLen
+                            val r = (samples[i] * 0.85f + delayBuf[di] * 0.15f).toInt().coerceIn(-32768, 32767)
+                            stereo[i * 2 + 1] = r.toShort()
+                        }
+                        writeBuf = ByteArray(stereo.size * 2)
+                        java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(stereo)
+                        writeLen = writeBuf.size
+                    } else {
+                        writeBuf = ByteArray(samples.size * 2)
+                        java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(samples)
+                        writeLen = writeBuf.size
                     }
 
                     synchronized(sess) { out.write(writeBuf, 0, writeLen) }
