@@ -332,7 +332,7 @@ class RecordingService : Service() {
             mr.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
             mr.setVideoSize(vw, vh)
             mr.setVideoFrameRate(30)
-            mr.setVideoEncodingBitRate(cfg.videoBitrate().coerceAtMost(8_000_000))
+            mr.setVideoEncodingBitRate(cfg.videoBitrate().coerceAtMost(4_000_000))
 
             if (needMic) {
                 mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -399,7 +399,7 @@ class RecordingService : Service() {
             val silenceThresh = if (skipSilence) 800 else 0
             var agcGain = 1.0f
             // Buffer delay untuk efek (echo/reverb/flanger) — ~120ms max
-            val delayLen = (rate * 0.12).toInt().coerceAtLeast(64)
+            val delayLen = (rate * 0.25).toInt().coerceAtLeast(256)
             val delayBuf = ShortArray(delayLen)
             var delayPos = 0
             var flangePhase = 0.0
@@ -455,19 +455,21 @@ class RecordingService : Service() {
                                 s = s * 0.7f + delayBuf[di] * 0.3f
                             }
                             EFFECT_ECHO -> {
-                                val echoDelay = (rate * 0.08).toInt().coerceIn(1, delayLen - 1)
+                                val echoDelay = (rate * 0.12).toInt().coerceIn(1, delayLen - 1)
                                 val di = (delayPos - echoDelay + delayLen) % delayLen
-                                s = s + delayBuf[di] * 0.35f
+                                s = s * 0.75f + delayBuf[di] * 0.55f
                             }
                             EFFECT_REVERB -> {
-                                // Gema multi-tap mirip soundcard V8
-                                val d1 = (rate * 0.03).toInt().coerceIn(1, delayLen - 1)
-                                val d2 = (rate * 0.06).toInt().coerceIn(1, delayLen - 1)
-                                val d3 = (rate * 0.09).toInt().coerceIn(1, delayLen - 1)
+                                // Gema stereo-like multi-tap (V8 style), lebih basah
+                                val d1 = (rate * 0.025).toInt().coerceIn(1, delayLen - 1)
+                                val d2 = (rate * 0.045).toInt().coerceIn(1, delayLen - 1)
+                                val d3 = (rate * 0.07).toInt().coerceIn(1, delayLen - 1)
+                                val d4 = (rate * 0.095).toInt().coerceIn(1, delayLen - 1)
                                 val a1 = delayBuf[(delayPos - d1 + delayLen) % delayLen]
                                 val a2 = delayBuf[(delayPos - d2 + delayLen) % delayLen]
                                 val a3 = delayBuf[(delayPos - d3 + delayLen) % delayLen]
-                                s = s * 0.65f + a1 * 0.2f + a2 * 0.1f + a3 * 0.05f
+                                val a4 = delayBuf[(delayPos - d4 + delayLen) % delayLen]
+                                s = s * 0.5f + a1 * 0.28f + a2 * 0.18f + a3 * 0.12f + a4 * 0.08f
                             }
                         }
 
@@ -477,14 +479,15 @@ class RecordingService : Service() {
                         samples[i] = outS
                     }
 
-                    // Stereo: mono → L/R dengan sedikit beda waktu agar terasa lebar
-                    if (forceStereo && inChannels == 1 && channels == 2) {
+                    // Stereo: mono → L/R; reverb selalu stereo lebar
+                    val wantStereoOut = channels == 2 && (forceStereo || effectMode == EFFECT_REVERB || effectMode == EFFECT_ECHO || effectMode == EFFECT_FLANGER)
+                    if (wantStereoOut && inChannels == 1) {
                         val stereo = ShortArray(samples.size * 2)
                         for (i in samples.indices) {
                             stereo[i * 2] = samples[i]
-                            // kanal kanan sedikit dari buffer delay agar tidak identik
-                            val di = (delayPos - 12 + delayLen) % delayLen
-                            val r = (samples[i] * 0.85f + delayBuf[di] * 0.15f).toInt().coerceIn(-32768, 32767)
+                            val di = (delayPos - (if (effectMode == EFFECT_REVERB) 48 else 12) + delayLen) % delayLen
+                            val mix = if (effectMode == EFFECT_REVERB) 0.35f else 0.15f
+                            val r = (samples[i] * (1f - mix) + delayBuf[di] * mix).toInt().coerceIn(-32768, 32767)
                             stereo[i * 2 + 1] = r.toShort()
                         }
                         writeBuf = ByteArray(stereo.size * 2)
@@ -573,12 +576,14 @@ class RecordingService : Service() {
     }
 
     private fun startMicFile(cfg: RecorderConfig) {
-        if (cfg.audioFormat == RecorderConfig.FMT_WAV || cfg.audioFormat == RecorderConfig.FMT_MP3) {
+        val useWav = cfg.audioFormat == RecorderConfig.FMT_WAV || cfg.audioFormat == RecorderConfig.FMT_MP3 || effectMode != EFFECT_STUDIO
+        if (useWav) {
             val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
             outputPath = f.absolutePath
             val rate = cfg.sampleRate
-            val channelConfig = if (forceStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
-            val outChannels = if (forceStereo) 2 else 1
+            val needFxStereo = forceStereo || effectMode == EFFECT_REVERB || effectMode == EFFECT_ECHO || effectMode == EFFECT_FLANGER
+            val channelConfig = if (needFxStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+            val outChannels = if (needFxStereo) 2 else 1
             val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
             val bufSize = minBuf.coerceAtLeast(rate) * 2
             val source = if (whisperMode) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC
