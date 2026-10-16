@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kausar Recorder</string>
+    <string name="header_title">Kausar Recorder</string>
+    <string name="header_hint">Choose mode, set effects, then start recording</string>
+    <string name="section_mode">Recording mode</string>
+    <string name="section_format">Format &amp; quality</string>
+    <string name="section_effects">Audio effects</string>
+    <string name="section_controls">Controls</string>
+    <string name="section_list">Saved recordings</string>
+    <string name="mode_screen">Screen record</string>
+    <string name="mode_mic">Microphone only</string>
+    <string name="mode_internal">Internal audio</string>
+    <string name="mode_internal_mic">Internal + mic</string>
+    <string name="format_aac">AAC (.m4a)</string>
+    <string name="format_wav">WAV (.wav)</string>
+    <string name="effect_studio">Studio</string>
+    <string name="effect_flanger">Flanger</string>
+    <string name="effect_echo">Echo</string>
+    <string name="effect_reverb">Reverb (V8)</string>
+    <string name="label_mic_gain">Microphone strength</string>
+    <string name="label_noise">Noise level</string>
+    <string name="label_sample">Sample rate</string>
+    <string name="btn_start">Start recording</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_bookmark">Add bookmark</string>
+    <string name="btn_settings">Settings</string>
+    <string name="btn_refresh_list">Refresh list</string>
+    <string name="status_ready">Ready</string>
+    <string name="status_recording">Recording…</string>
+    <string name="status_stopped">Recording stopped</string>
+    <string name="status_failed">Failed</string>
+    <string name="chk_stereo">Force stereo (mono → stereo)</string>
+    <string name="chk_noise">Noise mode (soft like Windows)</string>
+    <string name="chk_silence">Skip silence</string>
+    <string name="chk_gain_auto">Dynamic gain (AGC)</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_apply">Apply</string>
+    <string name="settings_close">Close</string>
+    <string name="lang_changed">Language changed. Restart the app for full effect.</string>
+    <string name="permission_needed">Permissions are required for the app to work</string>
+    <string name="no_recordings">No recordings yet</string>
+    <string name="duration">Duration</string>
+    <string name="saved_to">Saved to</string>
+</resources>
