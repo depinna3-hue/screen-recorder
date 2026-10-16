@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ikon_warna">#075E54</color>
+    <color name="ikon_warna_terang">#128C7E</color>
+    <color name="ikon_warna_gelap">#054C44</color>
+    <color name="primary">#075E54</color>
+    <color name="primary_dark">#054C44</color>
+    <color name="accent">#25D366</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="background">#F0F2F5</color>
+    <color name="text_primary">#111827</color>
+    <color name="text_secondary">#6B7280</color>
+</resources>
