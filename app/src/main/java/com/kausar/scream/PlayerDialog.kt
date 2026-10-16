@@ -39,8 +39,10 @@ object PlayerDialog {
      * Dipanggil setelah rekaman selesai (suara maupun layar).
      * Bila alamat file (uri) tidak ada, tampilkan dialog info biasa seperti sebelumnya.
      */
-    fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String) {
-        val subtitle = "Durasi: $durText" + if (path.isNotEmpty()) "\n\nLokasi:\n$path" else ""
+    fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String, note: String = "") {
+        val subtitle = "Durasi: $durText" +
+            (if (path.isNotEmpty()) "\n\nLokasi:\n$path" else "") +
+            (if (note.isNotEmpty()) "\n\n$note" else "")
         if (uriStr.isEmpty()) {
             AlertDialog.Builder(ctx)
                 .setTitle("Rekaman dihentikan")
