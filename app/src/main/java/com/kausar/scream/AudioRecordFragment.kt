@@ -129,7 +129,7 @@ class AudioRecordFragment : Fragment() {
         root.addView(label(ctx, "Fitur Raksasa"))
         chkStereo = checkBox(ctx, "Paksa Stereo (meski mic mono jadi stereo)", true)
         root.addView(chkStereo)
-        chkNoise = checkBox(ctx, "Mode Noise (tambah noise ke mikrofon)", false)
+        chkNoise = checkBox(ctx, "Mode Noise (noise lembut seperti Windows, suara tetap jernih)", false)
         root.addView(chkNoise)
         chkSilence = checkBox(ctx, "Lewati Keheningan Cerdas (skip silence)", false)
         root.addView(chkSilence)
