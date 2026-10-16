@@ -165,4 +165,21 @@ object PublicStorage {
             null
         }
     }
+
+    /** Paksa MediaStore memindai ulang file (setelah append). */
+    fun rescan(ctx: Context, uri: Uri) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = ContentValues()
+                values.put(MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                ctx.contentResolver.update(uri, values, null, null)
+            } else {
+                @Suppress("DEPRECATION")
+                val path = uri.path
+                if (path != null) {
+                    MediaScannerConnection.scanFile(ctx, arrayOf(path), null, null)
+                }
+            }
+        } catch (_: Exception) {}
+    }
 }
