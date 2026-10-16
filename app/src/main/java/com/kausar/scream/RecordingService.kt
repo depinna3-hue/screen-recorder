@@ -95,6 +95,13 @@ class RecordingService : Service() {
     private var whisperMode = false
     private val bookmarks = ArrayList<Long>()
     private var noiseSeed = 12345L
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            mainHandler.post {
+                if (recording) stopAll()
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -135,6 +142,7 @@ class RecordingService : Service() {
                 if (data != null) {
                     val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                     mediaProjection = mgr.getMediaProjection(code, data)
+                    mediaProjection?.registerCallback(projectionCallback, mainHandler)
                 }
                 try {
                     if (cfg.isScreen) startScreen(cfg) else startAudio(cfg)
@@ -145,7 +153,7 @@ class RecordingService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "start failed", e)
                     abortRecorders()
-                    sendStatus("Gagal: ${e.message}", "")
+                    sendStatus("Gagal: ${e.message ?: e.javaClass.simpleName}", "")
                     stopSelf()
                 }
             }
@@ -205,7 +213,13 @@ class RecordingService : Service() {
     // -------------------- SCREEN --------------------
     private fun startScreen(cfg: RecorderConfig) {
         val dm = metrics()
-        val (vw, vh) = cfg.videoSize(dm.widthPixels, dm.heightPixels)
+        var (vw, vh) = cfg.videoSize(dm.widthPixels, dm.heightPixels)
+        // Pastikan genap dan tidak terlalu besar untuk kompatibilitas
+        if (vw % 2 != 0) vw++
+        if (vh % 2 != 0) vh++
+        if (vw > dm.widthPixels) vw = dm.widthPixels / 2 * 2
+        if (vh > dm.heightPixels) vh = dm.heightPixels / 2 * 2
+
         val needVideo = cfg.mode != RecorderConfig.SCREEN_INTERNAL_ONLY
         val needMic = cfg.mode == RecorderConfig.SCREEN_MIC
         val needInternal = cfg.mode == RecorderConfig.SCREEN_INTERNAL ||
@@ -218,7 +232,6 @@ class RecordingService : Service() {
             throw IllegalStateException("Izin rekam layar belum diberikan")
         }
 
-        // Internal-only tanpa video → rekam audio saja lewat projection
         if (!needVideo) {
             startInternalAudioOnly(cfg)
             return
@@ -230,54 +243,59 @@ class RecordingService : Service() {
         val mr = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
         mediaRecorder = mr
 
-        if (needMic && !needInternal) {
-            mr.setAudioSource(MediaRecorder.AudioSource.MIC)
-        } else if (needInternal) {
-            // Audio di-capture terpisah / lewat playback capture ke MediaRecorder sulit digabung;
-            // pakai MIC sebagai cadangan + AudioRecord internal paralel tidak ke file yang sama.
-            // Untuk internal+layar: MediaRecorder video tanpa audio mic, audio internal ke track terpisah rumit.
-            // Pendekatan praktis: MediaRecorder VIDEO + AUDIO dari VOICE_RECOGNITION/MIC,
-            // dan bila internal: gunakan AudioPlaybackCapture ke AAC file samping — user minta satu file.
-            // Satu file MP4 dengan internal: setAudioSource tidak bisa playback capture langsung.
-            // Gunakan MediaRecorder hanya video, internal audio dicampur tidak di sini.
-            // Android: gunakan MediaRecorder dengan audio source MIC jika mic, else video only + internal wav.
+        try {
+            // Urutan wajib: source dulu, baru output format, lalu encoder
+            mr.setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            if (needMic) {
+                mr.setAudioSource(MediaRecorder.AudioSource.MIC)
+            }
+
+            mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            mr.setOutputFile(outputPath)
+
+            mr.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            mr.setVideoSize(vw, vh)
+            mr.setVideoFrameRate(30)
+            mr.setVideoEncodingBitRate(cfg.videoBitrate().coerceAtMost(8_000_000))
+
+            if (needMic) {
+                mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                mr.setAudioEncodingBitRate(cfg.audioBitrate())
+                mr.setAudioSamplingRate(cfg.sampleRate.coerceAtMost(48000))
+                mr.setAudioChannels(if (forceStereo) 2 else 1)
+            }
+
+            // Beberapa perangkat membutuhkan orientation hint
+            try {
+                mr.setOrientationHint(0)
+            } catch (_: Exception) {}
+
+            mr.prepare()
+
+            val surface = mr.surface
+                ?: throw IllegalStateException("Surface MediaRecorder null setelah prepare")
+
+            virtualDisplay = mediaProjection!!.createVirtualDisplay(
+                "KausarScreen",
+                vw, vh, dm.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                surface, null, null
+            )
+
+            if (needInternal) {
+                val iw = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
+                startInternalWav(cfg, iw)
+                extraFiles.add(iw)
+            }
+
+            mr.start()
+            recording = true
+        } catch (e: Exception) {
+            try { mr.reset() } catch (_: Exception) {}
+            try { mr.release() } catch (_: Exception) {}
+            mediaRecorder = null
+            throw IllegalStateException("Gagal memulai rekam layar: ${e.message}", e)
         }
-
-        mr.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-        if (needMic) {
-            mr.setAudioSource(MediaRecorder.AudioSource.MIC)
-        }
-
-        mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        mr.setOutputFile(outputPath)
-        mr.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-        mr.setVideoSize(vw, vh)
-        mr.setVideoFrameRate(30)
-        mr.setVideoEncodingBitRate(cfg.videoBitrate())
-        if (needMic) {
-            mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            mr.setAudioEncodingBitRate(cfg.audioBitrate())
-            mr.setAudioSamplingRate(cfg.sampleRate)
-            mr.setAudioChannels(1)
-        }
-        mr.prepare()
-
-        virtualDisplay = mediaProjection!!.createVirtualDisplay(
-            "KausarScreen",
-            vw, vh, dm.densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            mr.surface, null, null
-        )
-
-        // Internal audio sebagai file WAV samping bila dipilih (satu sesi)
-        if (needInternal) {
-            val iw = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
-            startInternalWav(cfg, iw)
-            extraFiles.add(iw) // diterbitkan terpisah saat stop
-        }
-
-        mr.start()
-        recording = true
     }
 
     /** Internal audio saja (tanpa video): selalu disimpan sebagai WAV. */
@@ -338,9 +356,12 @@ class RecordingService : Service() {
                             var s = samples[i].toInt()
                             if (dynamicGain) s = (s * gain).toInt().coerceIn(-32768, 32767)
                             if (enableNoise) {
+                                // Noise lembut mirip floor noise Windows: suara tetap jernih
                                 noiseSeed = noiseSeed * 1103515245L + 12345L
-                                val noise = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
-                                s = (s + noise / 8).coerceIn(-32768, 32767)
+                                val raw = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
+                                // Amplitudo sangat rendah (~1.5% full scale) agar voice tetap jelas
+                                val softNoise = raw / 64
+                                s = (s + softNoise).coerceIn(-32768, 32767)
                             }
                             samples[i] = s.toShort()
                         }
@@ -491,7 +512,10 @@ class RecordingService : Service() {
         mediaRecorder = null
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
-        try { mediaProjection?.stop() } catch (_: Exception) {}
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+            mediaProjection?.stop()
+        } catch (_: Exception) {}
         mediaProjection = null
     }
 
@@ -512,7 +536,10 @@ class RecordingService : Service() {
         mediaRecorder = null
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
-        try { mediaProjection?.stop() } catch (_: Exception) {}
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+            mediaProjection?.stop()
+        } catch (_: Exception) {}
         mediaProjection = null
 
         // Mode "Lanjutkan rekaman": gabungkan segmen baru ke file lama (di thread terpisah)
