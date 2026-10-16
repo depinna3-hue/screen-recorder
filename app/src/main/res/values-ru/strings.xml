@@ -82,7 +82,7 @@
     <string name="notif_resume">Resume</string>
     <string name="notif_stop">Stop</string>
     <string name="help_title">How to use</string>
-    <string name="help_body">Kausar Recorder is developed by Alkausar. Record screen and voice with audio effects.
+    <string name="help_body" formatted="false">Kausar Recorder is developed by Alkausar. Record screen and voice with audio effects.
 
 === RECORDING TYPE ===
 • Screen recording: capture the phone display (needs screen capture permission).
@@ -105,8 +105,8 @@
 • Reverb (V8): multi-tap stereo reverb like a V8 sound card.
 
 === SLIDERS ===
-• Microphone strength: 100% is normal; raise if quiet, lower if clipping.
-• Noise level: amount of soft noise when noise mode is on (0% = off).
+• Microphone strength: 100%% is normal; raise if quiet, lower if clipping.
+• Noise level: amount of soft noise when noise mode is on (0%% = off).
 
 === CHECKBOXES ===
 • Force stereo: on = convert mono to wide stereo; off = keep mono.
