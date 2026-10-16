@@ -54,6 +54,7 @@ class ScreenRecordFragment : Fragment() {
             if (src != RecordingService.SOURCE_SCREEN) return
             val path = i.getStringExtra(RecordingService.EXTRA_PATH) ?: ""
             val uri = i.getStringExtra(RecordingService.EXTRA_URI) ?: ""
+            val note = i.getStringExtra(RecordingService.EXTRA_NOTE) ?: ""
             val dur = i.getLongExtra(RecordingService.EXTRA_DURATION_MS, 0L)
             if (msg.contains("selesai", true)) {
                 btnStart.isEnabled = true
@@ -63,7 +64,7 @@ class ScreenRecordFragment : Fragment() {
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan:\n$path" else ""
                 // Tampilkan pemutar agar hasil rekaman bisa langsung ditonton
-                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText)
+                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText, note)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
