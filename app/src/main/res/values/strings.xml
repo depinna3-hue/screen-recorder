@@ -82,6 +82,52 @@
     <string name="notif_resume">Lanjutkan</string>
     <string name="notif_stop">Stop</string>
     <string name="help_title">Petunjuk penggunaan</string>
-    <string name="help_body">Kausar Recorder dikembangkan oleh Alkausar.\n\n• Jenis rekaman: pilih Rekaman layar atau Rekaman suara.\n• Sumber audio: Mikrofon saja, Audio internal, atau Internal + mikrofon.\n• Format: AAC atau WAV.\n• Efek: Studio (bersih), Flanger, Echo, Gema V8.\n• Kekuatan mikrofon: atur volume input.\n• Tingkat noise: atur besar noise latar (opsional).\n• Paksa stereo: ubah mono menjadi stereo lebar.\n• Mode noise: tambah noise lembut seperti Windows.\n• Lewati keheningan: abaikan bagian sangat sepi.\n• Penguat dinamis: kuatkan suara pelan otomatis.\n• Bookmark: tandai waktu saat merekam.\n• File disimpan di folder KausarRecorder (Audio / Screen).\n• Saat merekam, gunakan notifikasi untuk Jeda / Lanjutkan / Stop.\n\nSetelah stop, pilih Simpan, Putar, Bagikan, atau Bagikan dan simpan.</string>
+    <string name="help_body">Kausar Recorder dikembangkan oleh Alkausar. Aplikasi ini untuk merekam layar dan suara dengan efek audio.
+
+=== JENIS REKAMAN ===
+• Rekaman layar: merekam tampilan HP (perlu izin tangkap layar).
+• Rekaman suara: hanya audio tanpa video.
+
+=== SUMBER MIKROFON / AUDIO ===
+• Mikrofon saja: suara dari mic HP.
+• Audio internal: suara dari aplikasi lain (Android 10+).
+• Internal + mikrofon: gabungan keduanya.
+• Layar + mikrofon: video layar dengan suara mic.
+
+=== FORMAT ===
+• AAC (.m4a): file kecil, cocok simpan lama.
+• WAV (.wav): kualitas tinggi; dipakai otomatis jika memakai efek.
+
+=== EFEK AUDIO ===
+• Studio: suara bersih tanpa efek.
+• Flanger: efek modulate ringan.
+• Echo: gema tunggal jelas.
+• Gema (V8): reverb multi-tap stereo seperti soundcard V8.
+
+=== SLIDER ===
+• Kekuatan mikrofon: 100% normal; naikkan jika suara pelan, turunkan jika pecah.
+• Tingkat noise: besar noise latar saat mode noise aktif (0% = mati).
+
+=== KOTAK CENTANG ===
+• Paksa stereo: dicentang = mono diubah jadi stereo lebar; tidak dicentang = tetap mono.
+• Mode noise: dicentang = tambah noise lembut seperti Windows; tidak = tanpa noise.
+• Lewati keheningan: dicentang = bagian sangat sepi tidak ditulis (file lebih hemat); tidak = rekam semua.
+• Penguat dinamis (AGC): dicentang = suara pelan dikuatkan otomatis; tidak = volume tetap.
+
+=== TOMBOL ===
+• Mulai rekam: mulai sesi rekaman.
+• Stop: hentikan dan buka dialog Simpan / Putar / Bagikan.
+• Tandai bookmark: tandai waktu saat merekam.
+• Pengaturan: ganti bahasa aplikasi.
+• Baca petunjuk: menampilkan panduan ini.
+• Muat ulang daftar: segarkan daftar file tersimpan.
+
+=== NOTIFIKASI ===
+Saat merekam, buka notifikasi untuk Jeda / Lanjutkan / Stop tanpa membuka aplikasi.
+
+=== PENYIMPANAN ===
+File masuk folder KausarRecorder:
+• Music/KausarRecorder/Audio — rekaman suara
+• Movies/KausarRecorder/Screen — rekaman layar</string>
     <string name="bookmark_added">Bookmark ditambahkan di %1$d detik</string>
 </resources>
