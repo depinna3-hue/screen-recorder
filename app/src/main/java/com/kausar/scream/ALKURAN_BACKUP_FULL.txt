@@ -1,0 +1,1591 @@
+==================================================================
+ BACKUP PROYEK ALQURAN INDONESIA V2
+ Tanggal: Mon Sep 14 11:22:50 WITA 2026
+==================================================================
+
+##### ANDROIDMANIFEST.XML #####
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.kausar.audiokuran"
+    android:versionCode="5"
+    android:versionName="2.1">
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34"/>
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:theme="@style/AppTheme">
+        <activity android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <service android:name=".AudioService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"/>
+    </application>
+</manifest>
+
+##### BUILD.SH #####
+
+##### RES/VALUES/STRINGS.XML #####
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Alquran Indonesia V2</string>
+    <string name="dev_info">Developer by Al-Kautsar\nSpecial Modification by: Zaini</string>
+
+    <string name="btn_prev_surah">Sebelumnya Surah</string>
+    <string name="btn_prev_ayat">Sebelumnya Ayat</string>
+    <string name="btn_play">Putar</string>
+    <string name="btn_pause">Jeda</string>
+    <string name="btn_next_ayat">Ayat Selanjutnya</string>
+    <string name="btn_next_surah">Selanjutnya Surah</string>
+    <string name="btn_surah_list">Daftar Surah</string>
+    <string name="btn_juz_list">Daftar Juz</string>
+    <string name="btn_doa_list">Daftar Doa</string>
+    <string name="btn_player_full">Pemutar Lengkap</string>
+    <string name="btn_audio_settings">Pengaturan Audio</string>
+    <string name="btn_about">Informasi Aplikasi</string>
+    <string name="btn_exit">Tutup Aplikasi</string>
+    <string name="btn_jump">Buka</string>
+    <string name="btn_sleep_mode">Mode Tidur (Rentang Ayat)</string>
+    <string name="btn_start_sleep">Mulai Mode Tidur</string>
+    <string name="btn_stop_sleep">Matikan Mode Tidur</string>
+    <string name="btn_back_player">Kembali ke Pemutar</string>
+    <string name="btn_back_main">Kembali ke Menu Utama</string>
+    <string name="btn_back_settings">Kembali ke Pengaturan</string>
+    <string name="btn_save_all">Simpan Seluruh Pengaturan</string>
+    <string name="btn_reset_settings">Reset Aplikasi</string>
+    <string name="btn_yes_reset">Ya, Reset</string>
+    <string name="btn_cancel">Batal</string>
+    <string name="btn_close">Tutup</string>
+    <string name="btn_select_reciter">Pilih Qari</string>
+    <string name="btn_surah_prev_short">Surah Sblm</string>
+    <string name="btn_ayat_prev_short">Ayat Sblm</string>
+    <string name="btn_ayat_next_short">Ayat Brkt</string>
+    <string name="btn_surah_next_short">Surah Brkt</string>
+
+    <string name="btn_doa_prev">Doa Sebelumnya</string>
+    <string name="btn_doa_next">Doa Berikutnya</string>
+    <string name="btn_doa_back">Kembali ke Daftar Doa</string>
+    <string name="doa_arab_label">Teks Arab:</string>
+    <string name="doa_latin_label">Teks Latin:</string>
+    <string name="doa_arti_label">Terjemahan Indonesia:</string>
+    <string name="doa_swipe_hint">Geser ke kanan untuk melihat terjemahan.</string>
+
+    <string name="tts_checkbox">Aktifkan Terjemahan TTS pada Al-Quran</string>
+    <string name="tts_checkbox_desc">Setelah audio ayat selesai diputar, TTS membacakan terjemahan Indonesia sebelum lanjut ke ayat berikutnya</string>
+
+    <string name="hint_surah_no">No Surah (1-114)</string>
+    <string name="hint_ayat_opt">Ayat (Opsional)</string>
+    <string name="hint_juz_no">No Juz (1-30)</string>
+
+    <string name="lbl_start_from">MULAI DARI:</string>
+    <string name="lbl_stop_at">BERHENTI PADA:</string>
+    <string name="lbl_surah">Surah: </string>
+    <string name="lbl_ayat">Ayat: </string>
+    <string name="lbl_repeat_mode">Mode Ulangi:</string>
+    <string name="lbl_volume">Volume Pemutar (%1$d%%):</string>
+    <string name="lbl_sleep_timer">Sleep Timer (menit, 0 = mati): </string>
+
+    <string name="sleep_info">Mode Tidur Berkelanjutan\nAtur Surah &amp; Ayat awal serta Surah &amp; Ayat akhir. Audio akan berputar terus-menerus dan berhenti otomatis saat mencapai akhir tujuan. Anda juga dapat mengatur timer tidur dalam menit.</string>
+    <string name="reset_confirm">Apakah Anda yakin untuk mereset semua pengaturan ke setelan pabrik?\n\nTindakan ini tidak dapat dibatalkan.</string>
+
+    <string name="repeat_off">Mati</string>
+    <string name="repeat_ayat">Ulangi Ayat</string>
+    <string name="repeat_surah">Ulangi Surah</string>
+    <string name="repeat_juz">Ulangi Juz</string>
+
+    <string name="about_text">Alquran Indonesia V2\n\nAplikasi ini dirancang untuk memudahkan pemutaran audio Al-Qur\'an per ayat dengan berbagai pilihan qari terbaik dan fitur Mode Tidur rentang ayat kustom serta Sleep Timer.\n\nFitur Doa Harian berisi 15 doa pilihan dengan teks Arab dan terjemahan Indonesia. Geser ke kanan untuk melihat terjemahan.\n\n-- Kekurangan Aplikasi --\n\u2022 Untuk qari per-ayat, Basmalah di awal surah (kecuali At-Taubah) hanya akan terbaca jika tersedia di file audio asli. Tidak semua server menyertakan Basmalah pada file ayat pertama.\n\u2022 Disarankan menggunakan qari full surah seperti Syekh Muhammad Ayub untuk jaminan Basmalah di setiap awal surah.\n\u2022 Pemutaran per-ayat sangat bergantung pada kestabilan koneksi internet dan ketersediaan file di server.</string>
+
+    <string name="toast_audio_fail">Semua sumber audio gagal. Periksa koneksi atau pilih qari lain.</string>
+    <string name="toast_sleep_done">Sleep timer selesai.</string>
+    <string name="toast_play_done">Pemutaran selesai.</string>
+    <string name="toast_saved">Pengaturan berhasil disimpan!</string>
+    <string name="toast_reset_ok">Pengaturan berhasil dipulihkan!</string>
+    <string name="toast_invalid_surah">Nomor Surah tidak valid (1-114).</string>
+    <string name="toast_invalid_juz">Nomor Juz tidak valid (1-30).</string>
+    <string name="toast_invalid_pos">Posisi awal tidak boleh melebihi posisi akhir!</string>
+    <string name="toast_invalid_input">Nomor Surah atau Ayat tidak valid!</string>
+    <string name="toast_thanks">Terima kasih telah menggunakan aplikasi ini.</string>
+    <string name="toast_developer">Developer by Al-Kautsar</string>
+    <string name="toast_tts_on">Terjemahan TTS diaktifkan.</string>
+    <string name="toast_tts_off">Terjemahan TTS dinonaktifkan.</string>
+    <string name="toast_terjemahan_play">Membacakan terjemahan ayat...</string>
+
+    <string name="cd_play_pause">Putar atau jeda audio Al-Qur\'an</string>
+    <string name="cd_prev_surah">Menuju surah sebelumnya</string>
+    <string name="cd_prev_ayat">Menuju ayat sebelumnya</string>
+    <string name="cd_next_ayat">Menuju ayat selanjutnya</string>
+    <string name="cd_next_surah">Menuju surah selanjutnya</string>
+    <string name="cd_surah_list">Membuka daftar 114 surah</string>
+    <string name="cd_juz_list">Membuka daftar 30 juz</string>
+    <string name="cd_doa_list">Membuka daftar 15 doa harian</string>
+    <string name="cd_player_full">Membuka pemutar audio lengkap</string>
+    <string name="cd_audio_settings">Membuka pengaturan audio</string>
+    <string name="cd_about">Informasi aplikasi</string>
+    <string name="cd_exit">Menutup aplikasi</string>
+    <string name="cd_doa_prev">Menuju doa sebelumnya</string>
+    <string name="cd_doa_next">Menuju doa berikutnya</string>
+    <string name="notif_channel_name">Pemutaran Al-Quran</string>
+    <string name="notif_channel_desc">Notifikasi kontrol pemutaran audio Al-Quran</string>
+    <string name="notif_action_play">Putar</string>
+    <string name="notif_action_pause">Jeda</string>
+    <string name="notif_action_prev">Sebelumnya</string>
+    <string name="notif_action_next">Selanjutnya</string>
+    <string name="notif_action_stop">Tutup</string>
+</resources>
+
+##### RES/VALUES/COLORS.XML #####
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#1B5E20</color>
+    <color name="colorPrimaryDark">#0D3B11</color>
+    <color name="colorAccent">#F9A825</color>
+    <color name="colorBackground">#F5F5F5</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="colorTextPrimary">#212121</color>
+    <color name="colorTextSecondary">#616161</color>
+    <color name="colorDivider">#BDBDBD</color>
+    <color name="colorButtonText">#FFFFFF</color>
+    <color name="colorButton">#1B5E20</color>
+    <color name="colorButtonPressed">#0D3B11</color>
+</resources>
+
+##### RES/VALUES/STYLES.XML #####
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light">
+        <item name="android:colorPrimary">@color/colorPrimary</item>
+        <item name="android:colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="android:colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/colorBackground</item>
+    </style>
+
+    <style name="AppButton" parent="@android:style/Widget.Button">
+        <item name="android:background">@color/colorButton</item>
+        <item name="android:textColor">@color/colorButtonText</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+</resources>
+
+##### JAVA: AudioService.java #####
+package com.kausar.audiokuran;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.media.MediaPlayer;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+
+public class AudioService extends Service {
+    private static AudioService instance;
+    private NotificationManager nm;
+    private static final String CHANNEL_ID = "quran_playback";
+    private static final int NOTIF_ID = 1001;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable ticker = new Runnable(){
+        public void run(){
+            try { updateNotification(); } catch(Exception e){}
+            handler.postDelayed(this, 2000);
+        }
+    };
+
+    public static AudioService getInstance(){ return instance; }
+
+    @Override public IBinder onBind(Intent i){ return null; }
+
+    @Override
+    public void onCreate(){
+        super.onCreate();
+        instance = this;
+        nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Pemutaran Al-Quran", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("Kontrol pemutaran audio Al-Quran");
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+        }
+        startForeground(NOTIF_ID, buildNotification());
+        handler.postDelayed(ticker, 2000);
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId){
+        if(intent != null && intent.getAction() != null){
+            String a = intent.getAction();
+            PlayerManager pm = MainActivity.getStaticPm();
+            if(pm != null){
+                MediaPlayer pl = pm.getPlayer();
+                try {
+                    if("PLAY".equals(a)){
+                        if(!pl.isPlaying()){ if(pl.getDuration()>0) pl.start(); else pm.play(pm.state.surah, pm.state.ayat); }
+                    } else if("PAUSE".equals(a)){
+                        if(pl.isPlaying()) pl.pause();
+                    } else if("NEXT".equals(a)){
+                        pm.play(pm.state.surah, pm.state.ayat + 1);
+                    } else if("PREV".equals(a)){
+                        pm.play(pm.state.surah, pm.state.ayat - 1);
+                    } else if("STOP".equals(a)){
+                        if(pl.isPlaying()) pl.stop();
+                        pl.reset();
+                        pm.cancelSleepTimer();
+                        handler.removeCallbacksAndMessages(null);
+                        stopForeground(true);
+                        stopSelf();
+                        return START_NOT_STICKY;
+                    }
+                } catch(Exception e){}
+            }
+        }
+        updateNotification();
+        return START_NOT_STICKY;
+    }
+
+    @Override
+    public void onDestroy(){
+        handler.removeCallbacksAndMessages(null);
+        instance = null;
+        super.onDestroy();
+    }
+
+    private PendingIntent actionIntent(String action){
+        Intent i = new Intent(this, AudioService.class);
+        i.setAction(action);
+        int flag = PendingIntent.FLAG_UPDATE_CURRENT;
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flag |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getService(this, action.hashCode(), i, flag);
+    }
+
+    public void updateNotification(){
+        try { nm.notify(NOTIF_ID, buildNotification()); } catch(Exception e){}
+    }
+
+    private Notification buildNotification(){
+        Intent open = new Intent(this, MainActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flag = PendingIntent.FLAG_UPDATE_CURRENT;
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flag |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pi = PendingIntent.getActivity(this, 0, open, flag);
+
+        PlayerManager pm = MainActivity.getStaticPm();
+        String title = "Alquran Indonesia V2";
+        String text = "Siap memutar";
+        boolean isPlaying = false;
+        if(pm != null){
+            try {
+                Data.Surah s = Data.SURAH[pm.state.surah-1];
+                title = s.name + " - Ayat " + pm.state.ayat;
+                text = pm.getReciterName(pm.state.reciter);
+                isPlaying = pm.getPlayer().isPlaying();
+            } catch(Exception e){}
+        }
+
+        Notification.Builder b;
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+            b = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            b = new Notification.Builder(this);
+        }
+        b.setContentTitle(title)
+         .setContentText(text)
+         .setSmallIcon(android.R.drawable.ic_media_play)
+         .setContentIntent(pi)
+         .setOngoing(isPlaying)
+         .setOnlyAlertOnce(true)
+         .setShowWhen(false);
+
+        b.addAction(new Notification.Action.Builder(
+            android.R.drawable.ic_media_previous, "Sebelumnya", actionIntent("PREV")).build());
+
+        if(isPlaying){
+            b.addAction(new Notification.Action.Builder(
+                android.R.drawable.ic_media_pause, "Jeda", actionIntent("PAUSE")).build());
+        } else {
+            b.addAction(new Notification.Action.Builder(
+                android.R.drawable.ic_media_play, "Putar", actionIntent("PLAY")).build());
+        }
+
+        b.addAction(new Notification.Action.Builder(
+            android.R.drawable.ic_media_next, "Selanjutnya", actionIntent("NEXT")).build());
+
+        b.addAction(new Notification.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel, "Tutup", actionIntent("STOP")).build());
+
+        b.setStyle(new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2));
+
+        return b.build();
+    }
+}
+
+##### JAVA: Data.java #####
+package com.kausar.audiokuran;
+
+public class Data {
+    public static class Surah { public String name; public int verses; public int juz;
+        public Surah(String n,int v,int j){name=n;verses=v;juz=j;} }
+    public static class JuzStart { public int surah; public int ayat;
+        public JuzStart(int s,int a){surah=s;ayat=a;} }
+    public static class Reciter { public String code; public String name;
+        public Reciter(String c,String n){code=c;name=n;} }
+
+    public static final Surah[] SURAH = new Surah[]{
+        new Surah("Al-Fatihah",7,1),new Surah("Al-Baqarah",286,1),new Surah("Ali 'Imran",200,3),
+        new Surah("An-Nisa'",176,4),new Surah("Al-Ma'idah",120,6),new Surah("Al-An'am",165,7),
+        new Surah("Al-A'raf",206,8),new Surah("Al-Anfal",75,9),new Surah("At-Taubah",129,10),
+        new Surah("Yunus",109,11),new Surah("Hud",123,11),new Surah("Yusuf",111,12),
+        new Surah("Ar-Ra'd",43,13),new Surah("Ibrahim",52,13),new Surah("Al-Hijr",99,14),
+        new Surah("An-Nahl",128,14),new Surah("Al-Isra'",111,15),new Surah("Al-Kahf",110,15),
+        new Surah("Maryam",98,16),new Surah("Taha",135,16),new Surah("Al-Anbiya'",112,17),
+        new Surah("Al-Hajj",78,17),new Surah("Al-Mu'minun",118,18),new Surah("An-Nur",64,18),
+        new Surah("Al-Furqan",77,18),new Surah("Asy-Syu'ara'",227,19),new Surah("An-Naml",93,19),
+        new Surah("Al-Qasas",88,20),new Surah("Al-'Ankabut",69,20),new Surah("Ar-Rum",60,21),
+        new Surah("Luqman",34,21),new Surah("As-Sajdah",30,21),new Surah("Al-Ahzab",73,21),
+        new Surah("Saba'",54,22),new Surah("Fatir",45,22),new Surah("Yasin",83,22),
+        new Surah("As-Saffat",182,23),new Surah("Sad",88,23),new Surah("Az-Zumar",75,23),
+        new Surah("Ghafir",85,24),new Surah("Fussilat",54,24),new Surah("Asy-Syura",53,25),
+        new Surah("Az-Zukhruf",89,25),new Surah("Ad-Dukhan",59,25),new Surah("Al-Jasiyah",37,25),
+        new Surah("Al-Ahqaf",35,26),new Surah("Muhammad",38,26),new Surah("Al-Fath",29,26),
+        new Surah("Al-Hujurat",18,26),new Surah("Qaf",45,26),new Surah("Az-Zariyat",60,26),
+        new Surah("At-Tur",49,27),new Surah("An-Najm",62,27),new Surah("Al-Qamar",55,27),
+        new Surah("Ar-Rahman",78,27),new Surah("Al-Waqi'ah",96,27),new Surah("Al-Hadid",29,27),
+        new Surah("Al-Mujadilah",22,28),new Surah("Al-Hasyr",24,28),new Surah("Al-Mumtahanah",13,28),
+        new Surah("As-Saff",14,28),new Surah("Al-Jumu'ah",11,28),new Surah("Al-Munafiqun",11,28),
+        new Surah("At-Taghabun",18,28),new Surah("At-Talaq",12,28),new Surah("At-Tahrim",12,28),
+        new Surah("Al-Mulk",30,29),new Surah("Al-Qalam",52,29),new Surah("Al-Haqqah",52,29),
+        new Surah("Al-Ma'arij",44,29),new Surah("Nuh",28,29),new Surah("Al-Jinn",28,29),
+        new Surah("Al-Muzzammil",20,29),new Surah("Al-Muddassir",56,29),new Surah("Al-Qiyamah",40,29),
+        new Surah("Al-Insan",31,29),new Surah("Al-Mursalat",50,29),new Surah("An-Naba'",40,30),
+        new Surah("An-Nazi'at",46,30),new Surah("'Abasa",42,30),new Surah("At-Takwir",29,30),
+        new Surah("Al-Infitar",19,30),new Surah("Al-Mutaffifin",36,30),new Surah("Al-Insyiqaq",25,30),
+        new Surah("Al-Buruj",22,30),new Surah("At-Tariq",17,30),new Surah("Al-A'la",19,30),
+        new Surah("Al-Ghasyiyah",26,30),new Surah("Al-Fajr",30,30),new Surah("Al-Balad",20,30),
+        new Surah("Asy-Syams",15,30),new Surah("Al-Lail",21,30),new Surah("Ad-Duha",11,30),
+        new Surah("Asy-Syarh",8,30),new Surah("At-Tin",8,30),new Surah("Al-'Alaq",19,30),
+        new Surah("Al-Qadr",5,30),new Surah("Al-Bayyinah",8,30),new Surah("Az-Zalzalah",8,30),
+        new Surah("Al-'Adiyat",11,30),new Surah("Al-Qari'ah",11,30),new Surah("At-Takasur",8,30),
+        new Surah("Al-'Asr",3,30),new Surah("Al-Humazah",9,30),new Surah("Al-Fil",5,30),
+        new Surah("Quraisy",4,30),new Surah("Al-Ma'un",7,30),new Surah("Al-Kausar",3,30),
+        new Surah("Al-Kafirun",6,30),new Surah("An-Nasr",3,30),new Surah("Al-Lahab",5,30),
+        new Surah("Al-Ikhlas",4,30),new Surah("Al-Falaq",5,30),new Surah("An-Nas",6,30)
+    };
+
+    public static final JuzStart[] JUZ_START = new JuzStart[]{
+        new JuzStart(1,1),new JuzStart(2,142),new JuzStart(2,253),new JuzStart(4,24),
+        new JuzStart(4,148),new JuzStart(5,82),new JuzStart(6,111),new JuzStart(7,88),
+        new JuzStart(8,41),new JuzStart(9,93),new JuzStart(11,6),new JuzStart(12,53),
+        new JuzStart(15,1),new JuzStart(16,1),new JuzStart(17,1),new JuzStart(18,75),
+        new JuzStart(21,1),new JuzStart(23,1),new JuzStart(25,21),new JuzStart(27,56),
+        new JuzStart(29,46),new JuzStart(33,31),new JuzStart(36,28),new JuzStart(39,32),
+        new JuzStart(41,47),new JuzStart(46,1),new JuzStart(51,31),new JuzStart(58,1),
+        new JuzStart(67,1),new JuzStart(78,1)
+    };
+
+    public static final Reciter[] RECITERS = new Reciter[]{
+        new Reciter("Alafasy_128kbps","Mishary Rashid Alafasy"),
+        new Reciter("Abdul_Basit_Murattal_64kbps","Abdul Basit Abdul Samad"),
+        new Reciter("Abdurrahmaan_As-Sudais_192kbps","Abdurrahmaan As-Sudais"),
+        new Reciter("Saood_ash-Shuraym_128kbps","Saood Ash-Shuraym"),
+        new Reciter("Hani_Rifai_192kbps","Hani Ar-Rifai"),
+        new Reciter("MaherAlMuaiqly128kbps","Maher Al-Muaiqly"),
+        new Reciter("Hudhaify_128kbps","Ali Al-Hudhaify"),
+        new Reciter("Husary_128kbps","Mahmoud Khalil Al-Husary"),
+        new Reciter("Minshawy_Murattal_128kbps","Mohamed Siddiq Al-Minshawi"),
+        new Reciter("Mohammad_al_Tablaway_128kbps","Mohamed Al-Tablawi"),
+        new Reciter("Abdullah_Matroud_128kbps","Syekh Abdullah Al-Matruk (Al-Matroud)"),
+        new Reciter("Yasser_Ad-Dussary_128kbps","Yasser Al-Dossari"),
+        new Reciter("Nasser_Alqatami_128kbps","Nasser Al-Qatami"),
+        new Reciter("Khalefa_Al_Tunaiji_64kbps","Khalifa Al-Tunaiji"),
+        new Reciter("Salah_Al_Budair_128kbps","Salah Al-Budair"),
+        new Reciter("Muhammad_AbdulKareem_128kbps","Muhammad Abdul Kareem"),
+        new Reciter("Ibrahim_Akhdar_32kbps","Ibrahim Al-Akhdar"),
+        new Reciter("Ali_Jaber_64kbps","Ali Jaber"),
+        new Reciter("Muhammad_Ayyoub_Full","Syekh Muhammad Ayub (Full Surah)")
+    };
+}
+
+##### JAVA: DoaData.java #####
+package com.kausar.audiokuran;
+
+public class DoaData {
+    public static class Doa {
+        public String judul;
+        public String latin;
+        public String arab;
+        public String arti;
+        public String audioUrl;
+        public Doa(String j,String l,String a,String i,String u){
+            judul=j;latin=l;arab=a;arti=i;audioUrl=u;
+        }
+    }
+
+    public static final Doa[] LIST = new Doa[]{
+        new Doa("Doa Sebelum Makan",
+            "Bismillah",
+            "\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u0647\u0650",
+            "Dengan nama Allah.",
+            ""),
+        new Doa("Doa Setelah Makan",
+            "Alhamdulillahilladzi ath'amana wa saqana wa ja'alana minal muslimin",
+            "\u0627\u0644\u0652\u062d\u064e\u0645\u0652\u062f\u064f \u0644\u0650\u0644\u0651\u0647\u0650 \u0627\u0644\u0651\u064e\u0630\u0650\u064a \u0623\u064e\u0637\u0652\u0639\u064e\u0645\u064e\u0646\u064e\u0627 \u0648\u064e\u0633\u064e\u0642\u064e\u0627\u0646\u064e\u0627 \u0648\u064e\u062c\u064e\u0639\u064e\u0644\u064e\u0646\u064e\u0627 \u0645\u0650\u0646\u064e \u0627\u0644\u0652\u0645\u064f\u0633\u0652\u0644\u0650\u0645\u0650\u064a\u0646\u064e",
+            "Segala puji bagi Allah yang telah memberi kami makan dan minum, serta menjadikan kami termasuk orang-orang muslim.",
+            ""),
+        new Doa("Doa Sebelum Tidur",
+            "Bismikallahumma amutu wa ahya",
+            "\u0628\u0650\u0627\u0633\u0652\u0645\u0650\u0643\u064e \u0627\u0644\u0644\u0651\u064e\u0647\u064f\u0645\u0651\u064e \u0623\u064e\u0645\u064f\u0648\u062a\u064f \u0648\u064e\u0623\u064e\u062d\u0652\u064a\u064e\u0627",
+            "Dengan nama-Mu ya Allah, aku mati dan aku hidup.",
+            ""),
+        new Doa("Doa Bangun Tidur",
+            "Alhamdulillahilladzi ahyana ba'da ma amatana wa ilaihin nusyur",
+            "\u0627\u0644\u0652\u062d\u064e\u0645\u0652\u062f\u064f \u0644\u0650\u0644\u0651\u0647\u0650 \u0627\u0644\u0651\u064e\u0630\u0650\u064a \u0623\u064e\u062d\u0652\u064a\u064e\u0627\u0646\u064e\u0627 \u0628\u064e\u0639\u0652\u062f\u064e \u0645\u064e\u0627 \u0623\u064e\u0645\u064e\u0627\u062a\u064e\u0646\u064e\u0627 \u0648\u064e\u0625\u0650\u0644\u064e\u064a\u0652\u0647\u0650 \u0627\u0644\u0646\u0651\u064f\u0634\u064f\u0648\u0631\u064f",
+            "Segala puji bagi Allah yang telah menghidupkan kami setelah mematikan kami, dan kepada-Nya kami dibangkitkan.",
+            ""),
+        new Doa("Doa Masuk Kamar Mandi",
+            "Allahumma inni a'udzu bika minal khubutsi wal khaba'its",
+            "\u0627\u0644\u0644\u0651\u064e\u0647\u064f\u0645\u0651\u064e \u0625\u0650\u0646\u0651\u0650\u064a \u0623\u064e\u0639\u064f\u0648\u0630\u064f \u0628\u0650\u0643\u064e \u0645\u0650\u0646\u064e \u0627\u0644\u0652\u062e\u064f\u0628\u064f\u062b\u0650 \u0648\u064e\u0627\u0644\u0652\u062e\u064e\u0628\u064e\u0627\u0626\u0650\u062b\u0650",
+            "Ya Allah, aku berlindung kepada-Mu dari setan laki-laki dan setan perempuan.",
+            ""),
+        new Doa("Doa Keluar Kamar Mandi",
+            "Ghufranaka",
+            "\u063a\u064f\u0641\u0652\u0631\u064e\u0627\u0646\u064e\u0643\u064e",
+            "Aku memohon ampunan-Mu ya Allah.",
+            ""),
+        new Doa("Doa Sebelum Wudhu",
+            "Bismillah",
+            "\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u0647\u0650",
+            "Dengan nama Allah.",
+            ""),
+        new Doa("Doa Setelah Wudhu",
+            "Asyhadu alla ilaha illallah wa asyhadu anna Muhammadar rasulullah",
+            "\u0623\u064e\u0634\u0652\u0647\u064e\u062f\u064f \u0623\u064e\u0646\u0652 \u0644\u064e\u0627 \u0625\u0650\u0644\u064e\u0647\u064e \u0625\u0650\u0644\u0651\u064e\u0627 \u0627\u0644\u0644\u0651\u064e\u0647\u064f \u0648\u064e\u0623\u064e\u0634\u0652\u0647\u064e\u062f\u064f \u0623\u064e\u0646\u0651\u064e \u0645\u064f\u062d\u064e\u0645\u0651\u064e\u062f\u064b\u0627 \u0631\u064e\u0633\u064f\u0648\u0644\u064f \u0627\u0644\u0644\u0651\u064e\u0647\u0650",
+            "Aku bersaksi bahwa tiada tuhan selain Allah, dan aku bersaksi bahwa Muhammad adalah rasul Allah.",
+            ""),
+        new Doa("Doa Keluar Rumah",
+            "Bismillahi tawakkaltu 'alallahi la haula wa la quwwata illa billah",
+            "\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u064e\u0647\u0650 \u062a\u064e\u0648\u064e\u0643\u0651\u064e\u0644\u0652\u062a\u064f \u0639\u064e\u0644\u064e\u0649 \u0627\u0644\u0644\u0651\u064e\u0647\u0650 \u0644\u064e\u0627 \u062d\u064e\u0648\u0652\u0644\u064e \u0648\u064e\u0644\u064e\u0627 \u0642\u064f\u0648\u0651\u064e\u0629\u064e \u0625\u0650\u0644\u0651\u064e\u0627 \u0628\u0650\u0627\u0644\u0644\u0651\u064e\u0647\u0650",
+            "Dengan nama Allah, aku bertawakal kepada Allah. Tiada daya dan kekuatan kecuali dengan pertolongan Allah.",
+            ""),
+        new Doa("Doa Masuk Rumah",
+            "Bismillahi walajna wa bismillahi kharajna wa 'ala rabbina tawakkalna",
+            "\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u064e\u0647\u0650 \u0648\u064e\u0644\u064e\u062c\u0652\u0646\u064e\u0627 \u0648\u064e\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u064e\u0647\u0650 \u062e\u064e\u0631\u064e\u062c\u0652\u0646\u064e\u0627 \u0648\u064e\u0639\u064e\u0644\u064e\u0649 \u0631\u064e\u0628\u0651\u0650\u0646\u064e\u0627 \u062a\u064e\u0648\u064e\u0643\u0651\u064e\u0644\u0652\u0646\u064e\u0627",
+            "Dengan nama Allah kami masuk, dengan nama Allah kami keluar, dan kepada Tuhan kami, kami bertawakal.",
+            ""),
+        new Doa("Doa Masuk Masjid",
+            "Allahummaftah li abwaba rahmatik",
+            "\u0627\u0644\u0644\u0651\u064e\u0647\u064f\u0645\u0651\u064e \u0627\u0641\u0652\u062a\u064e\u062d\u0652 \u0644\u0650\u064a \u0623\u064e\u0628\u0652\u0648\u064e\u0627\u0628\u064e \u0631\u064e\u062d\u0652\u0645\u064e\u062a\u0650\u0643\u064e",
+            "Ya Allah, bukakanlah untukku pintu-pintu rahmat-Mu.",
+            ""),
+        new Doa("Doa Keluar Masjid",
+            "Allahumma inni as-aluka min fadhlik",
+            "\u0627\u0644\u0644\u0651\u064e\u0647\u064f\u0645\u0651\u064e \u0625\u0650\u0646\u0651\u0650\u064a \u0623\u064e\u0633\u0652\u0623\u064e\u0644\u064f\u0643\u064e \u0645\u0650\u0646\u0652 \u0641\u064e\u0636\u0652\u0644\u0650\u0643\u064e",
+            "Ya Allah, aku memohon kepada-Mu dari karunia-Mu.",
+            ""),
+        new Doa("Doa Naik Kendaraan",
+            "Subhanalladzi sakhkhara lana hadza wa ma kunna lahu muqrinin wa inna ila rabbina lamunqalibun",
+            "\u0633\u064f\u0628\u0652\u062d\u064e\u0627\u0646\u064e \u0627\u0644\u0651\u064e\u0630\u0650\u064a \u0633\u064e\u062e\u0651\u064e\u0631\u064e \u0644\u064e\u0646\u064e\u0627 \u0647\u064e\u0630\u064e\u0627 \u0648\u064e\u0645\u064e\u0627 \u0643\u064f\u0646\u0651\u064e\u0627 \u0644\u064e\u0647\u064f \u0645\u064f\u0642\u0652\u0631\u0650\u0646\u0650\u064a\u0646\u064e \u0648\u064e\u0625\u0650\u0646\u0651\u064e\u0627 \u0625\u0650\u0644\u064e\u0649 \u0631\u064e\u0628\u0651\u0650\u0646\u064e\u0627 \u0644\u064e\u0645\u064f\u0646\u0652\u0642\u064e\u0644\u0650\u0628\u064f\u0648\u0646\u064e",
+            "Maha Suci Allah yang telah menundukkan kendaraan ini untuk kami, padahal kami sebelumnya tidak mampu menguasainya. Dan sungguh kepada Tuhan kami, kami akan kembali.",
+            ""),
+        new Doa("Doa Ketika Hujan Turun",
+            "Allahumma shayyiban nafi'a",
+            "\u0627\u0644\u0644\u0651\u064e\u0647\u064f\u0645\u0651\u064e \u0635\u064e\u064a\u0651\u0650\u0628\u064b\u0627 \u0646\u064e\u0627\u0641\u0650\u0639\u064b\u0627",
+            "Ya Allah, turunkanlah hujan yang bermanfaat.",
+            ""),
+        new Doa("Doa Kebaikan Dunia Akhirat",
+            "Rabbana atina fid dunya hasanah wa fil akhirati hasanah wa qina 'adzaban nar",
+            "\u0631\u064e\u0628\u0651\u064e\u0646\u064e\u0627 \u0622\u062a\u0650\u0646\u064e\u0627 \u0641\u0650\u064a \u0627\u0644\u062f\u0651\u064f\u0646\u0652\u064a\u064e\u0627 \u062d\u064e\u0633\u064e\u0646\u064e\u0629\u064b \u0648\u064e\u0641\u0650\u064a \u0627\u0644\u0652\u0622\u062e\u0650\u0631\u064e\u0629\u0650 \u062d\u064e\u0633\u064e\u0646\u064e\u0629\u064b \u0648\u064e\u0642\u0650\u0646\u064e\u0627 \u0639\u064e\u0630\u064e\u0627\u0628\u064e \u0627\u0644\u0646\u0651\u064e\u0627\u0631\u0650",
+            "Tuhan kami, berikanlah kepada kami kebaikan di dunia dan kebaikan di akhirat, dan lindungilah kami dari azab neraka.",
+            "")
+    };
+}
+
+##### JAVA: MainActivity.java #####
+package com.kausar.audiokuran;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.Intent;
+import android.media.MediaPlayer;
+import android.os.Build;
+import android.os.Bundle;
+import android.text.InputType;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.*;
+import android.view.Window;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Stack;
+
+public class MainActivity extends Activity {
+    private Storage storage;
+    private PlayerManager pm;
+    private MediaPlayer player;
+    private TextView txtStatus;
+    private Button btnPlayPause;
+    private int currentMenu = 0;
+    private int currentDoa = 0;
+    private int doaPage = 0;
+    private Stack<Integer> menuStack = new Stack<>();
+    private FrameLayout container;
+    private Dialog currentDialog;
+
+    private static MediaPlayer staticPlayer = null;
+    private static PlayerManager staticPm = null;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        storage = new Storage(getApplicationContext());
+        Utils.initTTS(this);
+        if(staticPlayer == null) staticPlayer = new MediaPlayer();
+        player = staticPlayer;
+        if(staticPm == null){
+            staticPm = new PlayerManager(this, storage, player, () -> runOnUi(() -> updateAllViews()));
+            staticPm.state.surah = storage.getSurah();
+            staticPm.state.ayat = storage.getAyat();
+            String r = storage.getReciter(); boolean valid=false;
+            for(Data.Reciter rr: Data.RECITERS) if(rr.code.equals(r)){ valid=true; break; }
+            staticPm.state.reciter = valid ? r : "Alafasy_128kbps";
+            staticPm.state.repeatMode = storage.getRepeatMode();
+            staticPm.state.volume = storage.getVolume();
+        }
+        pm = staticPm;
+        pm.setListener(() -> runOnUi(() -> updateAllViews()));
+
+        container = new FrameLayout(this);
+        container.setBackgroundColor(getResources().getColor(R.color.colorBackground));
+        setContentView(container);
+
+        if(Build.VERSION.SDK_INT >= 33){
+            try {
+                if(checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED){
+                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 991);
+                }
+            } catch(Exception e){}
+        }
+        try { startForegroundService(new Intent(this, AudioService.class)); }
+        catch(Exception e){ try { startService(new Intent(this, AudioService.class)); } catch(Exception e2){} }
+
+        Utils.toast(this, getString(R.string.toast_developer), true);
+        TerjemahanCache.fetch(storage.getSurah(), null);
+        if(savedInstanceState != null){
+            currentMenu = savedInstanceState.getInt("currentMenu", 0);
+            int[] stackInt = savedInstanceState.getIntArray("menuStack");
+            if(stackInt != null) for(int x: stackInt) menuStack.push(x);
+            showMenu(currentMenu);
+        } else {
+            showMenu(0);
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle b){
+        super.onSaveInstanceState(b);
+        b.putInt("currentMenu", currentMenu);
+        Integer[] arr = menuStack.toArray(new Integer[0]);
+        int[] out = new int[arr.length];
+        for(int i=0;i<arr.length;i++) out[i] = arr[i];
+        b.putIntArray("menuStack", out);
+    }
+
+    private void runOnUi(Runnable r){ runOnUiThread(r); }
+
+    @Override
+    public void onBackPressed(){
+        goBack();
+    }
+
+    private void goBack(){
+        if(currentDialog != null){ try { currentDialog.dismiss(); } catch(Exception e){} currentDialog = null; return; }
+        if(menuStack.isEmpty()) performExit();
+        else showMenu(menuStack.pop());
+    }
+
+    private void performExit(){
+        Utils.speak(getString(R.string.toast_thanks));
+        Utils.toast(this, getString(R.string.toast_thanks), false);
+        finish();
+    }
+
+    private void navigateTo(int id){ menuStack.push(currentMenu); showMenu(id); }
+
+
+    private void showMenu(int id){
+        currentMenu = id;
+        if(currentDialog != null){
+            try { currentDialog.dismiss(); } catch(Exception e){}
+            currentDialog = null;
+        }
+        View v;
+        switch(id){
+            case 1: v = buildSurahList(); break;
+            case 2: v = buildJuzList(); break;
+            case 3: v = buildSleepRange(); break;
+            case 4: v = buildPlayerDialog(); break;
+            case 5: v = buildAudioSettings(); break;
+            case 6: v = buildReciterDialog(); break;
+            case 7: v = buildAbout(); break;
+            case 8: v = buildResetConfirm(); break;
+            case 9: v = buildDoaList(); break;
+            case 10: v = buildDoaDetail(currentDoa); break;
+            default:
+                container.removeAllViews();
+                v = buildMainMenu();
+                container.addView(v);
+                updateAllViews();
+                return;
+        }
+        Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        d.setContentView(v);
+        Window w = d.getWindow();
+        if(w != null){
+            w.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT);
+            w.setBackgroundDrawableResource(android.R.color.white);
+            w.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+        d.setOnCancelListener(dd -> { currentDialog = null; });
+        currentDialog = d;
+        d.show();
+        updateAllViews();
+    }
+
+    private Button btn(int textRes, int cdRes, View.OnClickListener l){
+        Button b = new Button(this);
+        b.setText(textRes);
+        if(cdRes!=0) b.setContentDescription(getString(cdRes));
+        b.setPadding(8,8,8,8); b.setMinHeight(120);
+        b.setOnClickListener(l);
+        return b;
+    }
+    private Button btnText(String text,String cd,View.OnClickListener l){
+        Button b=new Button(this); b.setText(text); b.setContentDescription(cd);
+        b.setPadding(8,8,8,8); b.setMinHeight(120); b.setOnClickListener(l);
+        return b;
+    }
+    private LinearLayout row(Button... btns){
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setPadding(0,5,0,5);
+        for(Button b: btns){
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
+            lp.setMargins(2,2,2,2); b.setLayoutParams(lp); r.addView(b);
+        }
+        return r;
+    }
+
+    private void updateAllViews(){
+        if(txtStatus==null) return;
+        Data.Surah s = Data.SURAH[pm.state.surah-1];
+        String qariName = pm.getReciterName(pm.state.reciter);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format(Locale.US,"Qari: %s\nPosisi: %s (Ayat %d dari %d)", qariName, s.name, pm.state.ayat, s.verses));
+        if(pm.state.rangePlayActive)
+            sb.append(String.format(Locale.US,"\n[Mode Tidur: Surah %s (%d) - Surah %s (%d) AKTIF]",
+                Data.SURAH[pm.state.startSurah-1].name,pm.state.startAyat,
+                Data.SURAH[pm.state.endSurah-1].name,pm.state.endAyat));
+        if(pm.state.sleepTimerActive) sb.append("\n[Sleep Timer: AKTIF]");
+        String repeatLabel = getString(R.string.repeat_off);
+        if("ayat".equals(pm.state.repeatMode)) repeatLabel = getString(R.string.repeat_ayat);
+        else if("surah".equals(pm.state.repeatMode)) repeatLabel = getString(R.string.repeat_surah);
+        else if("juz".equals(pm.state.repeatMode)) repeatLabel = getString(R.string.repeat_juz);
+        sb.append("\n[Mode Ulangi: ").append(repeatLabel).append("]");
+        txtStatus.setText(sb.toString());
+        if(pm.state.surah>0 && pm.state.surah<=114 && !TerjemahanCache.isLoaded(pm.state.surah)){ TerjemahanCache.fetch(pm.state.surah, null); }
+        if(btnPlayPause!=null){
+            boolean playing = false;
+            try { playing = player.isPlaying(); } catch(Exception e){}
+            btnPlayPause.setText(playing ? R.string.btn_pause : R.string.btn_play);
+        }
+    }
+
+    private View buildMainMenu(){
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(25,20,25,20);
+        ScrollView scroll = new ScrollView(this); scroll.addView(layout);
+
+        TextView title = new TextView(this);
+        title.setText(R.string.app_name);
+        title.setTextSize(20); title.setTextColor(getResources().getColor(R.color.colorTextPrimary));
+        layout.addView(title);
+
+        TextView dev = new TextView(this);
+        dev.setText(R.string.dev_info);
+        dev.setTextSize(12); dev.setTextColor(getResources().getColor(R.color.colorTextSecondary));
+        dev.setPadding(0,2,0,15);
+        layout.addView(dev);
+
+        txtStatus = new TextView(this);
+        txtStatus.setTextSize(15); txtStatus.setTextColor(getResources().getColor(R.color.colorTextPrimary));
+        txtStatus.setPadding(10,10,10,15);
+        layout.addView(txtStatus);
+
+        Button bPS = btn(R.string.btn_prev_surah, R.string.cd_prev_surah, v -> pm.play(pm.state.surah-1,1));
+        Button bPA = btn(R.string.btn_prev_ayat, R.string.cd_prev_ayat, v -> pm.play(pm.state.surah,pm.state.ayat-1));
+        btnPlayPause = btn(R.string.btn_play, R.string.cd_play_pause, v -> {
+            try {
+                if(player.isPlaying()){ player.pause(); Utils.speak("Audio dijeda."); }
+                else { if(player.getDuration()>0) player.start(); else pm.play(pm.state.surah,pm.state.ayat); }
+                new android.os.Handler(getMainLooper()).postDelayed(new Runnable(){
+                    public void run(){ updateAllViews(); }
+                }, 200);
+            } catch(Exception e){}
+        });
+        Button bNA = btn(R.string.btn_next_ayat, R.string.cd_next_ayat, v -> pm.play(pm.state.surah,pm.state.ayat+1));
+        Button bNS = btn(R.string.btn_next_surah, R.string.cd_next_surah, v -> pm.play(pm.state.surah+1,1));
+        layout.addView(row(bPS,bPA,btnPlayPause,bNA,bNS));
+
+        TextView sp = new TextView(this); sp.setHeight(15); layout.addView(sp);
+
+        layout.addView(row(
+            btn(R.string.btn_surah_list, R.string.cd_surah_list, v -> navigateTo(1)),
+            btn(R.string.btn_juz_list, R.string.cd_juz_list, v -> navigateTo(2)),
+            btn(R.string.btn_doa_list, R.string.cd_doa_list, v -> navigateTo(9))
+        ));
+        layout.addView(row(
+            btn(R.string.btn_player_full, R.string.cd_player_full, v -> navigateTo(4)),
+            btn(R.string.btn_audio_settings, R.string.cd_audio_settings, v -> navigateTo(5))
+        ));
+        layout.addView(row(
+            btn(R.string.btn_about, R.string.cd_about, v -> navigateTo(7))
+        ));
+        return scroll;
+    }
+
+    private View buildSurahList(){
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+
+        LinearLayout top = new LinearLayout(this); top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setPadding(0,0,0,15);
+        final EditText eS=new EditText(this); eS.setHint(R.string.hint_surah_no); eS.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eS.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,2.0f));
+        final EditText eA=new EditText(this); eA.setHint(R.string.hint_ayat_opt); eA.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eA.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.5f));
+        Button bJ=new Button(this); bJ.setText(R.string.btn_jump);
+        bJ.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        bJ.setOnClickListener(v -> {
+            try {
+                int sNum=Integer.parseInt(eS.getText().toString());
+                int aNum=eA.getText().toString().isEmpty()?1:Integer.parseInt(eA.getText().toString());
+                if(sNum>=1&&sNum<=114){
+                    int maxA=Data.SURAH[sNum-1].verses;
+                    if(aNum<1) aNum=1; else if(aNum>maxA) aNum=maxA;
+                    pm.play(sNum,aNum); menuStack.clear(); showMenu(0);
+                } else Utils.toast(this,getString(R.string.toast_invalid_surah),false);
+            } catch(Exception ex){ Utils.toast(this,getString(R.string.toast_invalid_input),false); }
+        });
+        top.addView(eS); top.addView(eA); top.addView(bJ); layout.addView(top);
+
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout inner=new LinearLayout(this); inner.setOrientation(LinearLayout.VERTICAL);
+        for(int i=0;i<Data.SURAH.length;i++){
+            final int idx=i+1; Data.Surah s=Data.SURAH[i];
+            Button b=new Button(this);
+            b.setText(String.format(Locale.US,"%d. Surah %s (%d Ayat)",idx,s.name,s.verses));
+            b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+            b.setPadding(15,12,15,12); b.setMinHeight(120);
+            b.setContentDescription("Surah "+s.name);
+            b.setOnClickListener(v -> { pm.play(idx,1); menuStack.clear(); showMenu(0); });
+            inner.addView(b);
+        }
+        scroll.addView(inner); layout.addView(scroll);
+        return layout;
+    }
+
+    private View buildJuzList(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+        LinearLayout top=new LinearLayout(this); top.setOrientation(LinearLayout.HORIZONTAL); top.setPadding(0,0,0,15);
+        final EditText eJ=new EditText(this); eJ.setHint(R.string.hint_juz_no); eJ.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eJ.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,2.0f));
+        final EditText eA=new EditText(this); eA.setHint(R.string.hint_ayat_opt); eA.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eA.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.5f));
+        Button bJ=new Button(this); bJ.setText(R.string.btn_jump);
+        bJ.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        bJ.setOnClickListener(v -> {
+            try {
+                int jNum=Integer.parseInt(eJ.getText().toString());
+                int aNum=eA.getText().toString().isEmpty()?0:Integer.parseInt(eA.getText().toString());
+                if(jNum>=1&&jNum<=30){
+                    Data.JuzStart t=Data.JUZ_START[jNum-1];
+                    int tA=(aNum>=1&&aNum<=Data.SURAH[t.surah-1].verses)?aNum:t.ayat;
+                    pm.play(t.surah,tA); menuStack.clear(); showMenu(0);
+                } else Utils.toast(this,getString(R.string.toast_invalid_juz),false);
+            } catch(Exception ex){ Utils.toast(this,getString(R.string.toast_invalid_input),false); }
+        });
+        top.addView(eJ); top.addView(eA); top.addView(bJ); layout.addView(top);
+        ScrollView scroll=new ScrollView(this); LinearLayout inner=new LinearLayout(this); inner.setOrientation(LinearLayout.VERTICAL);
+        for(int i=0;i<30;i++){
+            Data.JuzStart st=Data.JUZ_START[i];
+            Button b=new Button(this);
+            b.setText(String.format(Locale.US,"Juz %d (Awal: Surah %s Ayat %d)",i+1,Data.SURAH[st.surah-1].name,st.ayat));
+            b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+            b.setPadding(15,12,15,12); b.setMinHeight(120);
+            final Data.JuzStart fs=st;
+            b.setOnClickListener(v -> { pm.play(fs.surah,fs.ayat); menuStack.clear(); showMenu(0); });
+            inner.addView(b);
+        }
+        scroll.addView(inner); layout.addView(scroll);
+        return layout;
+    }
+
+    private View buildSleepRange(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(25,20,25,20);
+        ScrollView scroll=new ScrollView(this); LinearLayout inner=new LinearLayout(this); inner.setOrientation(LinearLayout.VERTICAL);
+        TextView info=new TextView(this);
+        info.setText(R.string.sleep_info); info.setTextColor(getResources().getColor(R.color.colorTextPrimary));
+        info.setPadding(0,0,0,15); inner.addView(info);
+        final List<String> names=new ArrayList<>();
+        for(int i=0;i<Data.SURAH.length;i++) names.add(String.format(Locale.US,"%d. %s",i+1,Data.SURAH[i].name));
+        TextView lbl1=new TextView(this); lbl1.setText(R.string.lbl_start_from);
+        lbl1.setTextColor(getResources().getColor(R.color.colorTextPrimary)); inner.addView(lbl1);
+        LinearLayout r1=new LinearLayout(this); r1.setOrientation(LinearLayout.HORIZONTAL);
+        TextView l1=new TextView(this); l1.setText(R.string.lbl_surah); r1.addView(l1);
+        final Spinner spStart=new Spinner(this);
+        spStart.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));
+        spStart.setSelection(pm.state.startSurah-1);
+        spStart.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        r1.addView(spStart); inner.addView(r1);
+        LinearLayout r2=new LinearLayout(this); r2.setOrientation(LinearLayout.HORIZONTAL);
+        TextView l2=new TextView(this); l2.setText(R.string.lbl_ayat); r2.addView(l2);
+        final EditText eSA=new EditText(this); eSA.setText(String.valueOf(pm.state.startAyat));
+        eSA.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eSA.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        r2.addView(eSA); inner.addView(r2);
+        TextView lbl2=new TextView(this); lbl2.setText(R.string.lbl_stop_at);
+        lbl2.setTextColor(getResources().getColor(R.color.colorTextPrimary)); inner.addView(lbl2);
+        LinearLayout r3=new LinearLayout(this); r3.setOrientation(LinearLayout.HORIZONTAL);
+        TextView l3=new TextView(this); l3.setText(R.string.lbl_surah); r3.addView(l3);
+        final Spinner spEnd=new Spinner(this);
+        spEnd.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));
+        spEnd.setSelection(pm.state.endSurah-1);
+        spEnd.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        r3.addView(spEnd); inner.addView(r3);
+        LinearLayout r4=new LinearLayout(this); r4.setOrientation(LinearLayout.HORIZONTAL);
+        TextView l4=new TextView(this); l4.setText(R.string.lbl_ayat); r4.addView(l4);
+        final EditText eEA=new EditText(this); eEA.setText(String.valueOf(pm.state.endAyat));
+        eEA.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eEA.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,1.0f));
+        r4.addView(eEA); inner.addView(r4);
+        LinearLayout rT=new LinearLayout(this); rT.setOrientation(LinearLayout.HORIZONTAL);
+        TextView lT=new TextView(this); lT.setText(R.string.lbl_sleep_timer); rT.addView(lT);
+        final EditText eT=new EditText(this); eT.setText("0"); eT.setInputType(InputType.TYPE_CLASS_NUMBER);
+        eT.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,0.5f));
+        rT.addView(eT); inner.addView(rT);
+        inner.addView(btn(R.string.btn_start_sleep,0,v -> {
+            try {
+                int sS=spStart.getSelectedItemPosition()+1;
+                int sA=Integer.parseInt(eSA.getText().toString());
+                int eS=spEnd.getSelectedItemPosition()+1;
+                int eA=Integer.parseInt(eEA.getText().toString());
+                int tm=eT.getText().toString().isEmpty()?0:Integer.parseInt(eT.getText().toString());
+                if(sA<1) sA=1;
+                if(eA>Data.SURAH[eS-1].verses) eA=Data.SURAH[eS-1].verses;
+                if(pm.comparePosition(sS,sA,eS,eA)<=0){
+                    pm.state.startSurah=sS; pm.state.startAyat=sA;
+                    pm.state.endSurah=eS; pm.state.endAyat=eA;
+                    pm.state.rangePlayActive=true; pm.state.repeatMode="off";
+                    if(tm>0){
+                        pm.startSleepTimer(tm);
+                        Utils.speak(String.format(Locale.US,"Mode tidur aktif dari Surah %s ayat %d sampai Surah %s ayat %d dengan timer %d menit",Data.SURAH[sS-1].name,sA,Data.SURAH[eS-1].name,eA,tm));
+                    } else {
+                        pm.cancelSleepTimer();
+                        Utils.speak(String.format(Locale.US,"Mode tidur aktif dari Surah %s ayat %d sampai Surah %s ayat %d",Data.SURAH[sS-1].name,sA,Data.SURAH[eS-1].name,eA));
+                    }
+                    Utils.toast(this,String.format(Locale.US,"Memulai pemutaran s.d. Surah %s Ayat %d",Data.SURAH[eS-1].name,eA),false);
+                    pm.play(sS,sA); navigateTo(4);
+                } else Utils.toast(this,getString(R.string.toast_invalid_pos),false);
+            } catch(Exception ex){ Utils.toast(this,getString(R.string.toast_invalid_input),false); }
+        }));
+        inner.addView(btn(R.string.btn_stop_sleep,0,v -> {
+            pm.state.rangePlayActive=false; pm.cancelSleepTimer();
+            Utils.speak("Mode tidur dinonaktifkan");
+            Utils.toast(this,"Mode tidur dimatikan.",false);
+        }));
+        inner.addView(btn(R.string.btn_back_player,0,v -> navigateTo(4)));
+        scroll.addView(inner); layout.addView(scroll);
+        return scroll;
+    }
+
+    private View buildPlayerDialog(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+        ScrollView scroll=new ScrollView(this); scroll.addView(layout);
+        final TextView tv=new TextView(this); tv.setTextSize(16);
+        tv.setTextColor(getResources().getColor(R.color.colorTextPrimary)); tv.setPadding(10,10,10,20);
+        layout.addView(tv);
+        Button bPS=btn(R.string.btn_surah_prev_short,0,v -> pm.play(pm.state.surah-1,1));
+        Button bPA=btn(R.string.btn_ayat_prev_short,0,v -> pm.play(pm.state.surah,pm.state.ayat-1));
+        final Button bP = new Button(this);
+        bP.setText(R.string.btn_play);
+        bP.setContentDescription(getString(R.string.cd_play_pause));
+        bP.setPadding(8,8,8,8);
+        bP.setMinHeight(120);
+        bP.setOnClickListener(v -> {
+            try {
+                if(player.isPlaying()){ player.pause(); Utils.speak("Audio dijeda."); }
+                else { if(player.getDuration()>0) player.start(); else pm.play(pm.state.surah,pm.state.ayat); }
+                new android.os.Handler(getMainLooper()).postDelayed(new Runnable(){
+                    public void run(){ updatePlayerStatus(tv,bP); }
+                }, 200);
+            } catch(Exception e){}
+        });
+        Button bNA=btn(R.string.btn_ayat_next_short,0,v -> pm.play(pm.state.surah,pm.state.ayat+1));
+        Button bNS=btn(R.string.btn_surah_next_short,0,v -> pm.play(pm.state.surah+1,1));
+        layout.addView(row(bPS,bPA,bP,bNA,bNS));
+        TextView lblR=new TextView(this); lblR.setText(R.string.lbl_repeat_mode); lblR.setTextSize(15); lblR.setPadding(10,25,10,8);
+        lblR.setTextColor(getResources().getColor(R.color.colorTextPrimary)); layout.addView(lblR);
+        final Spinner spR=new Spinner(this);
+        String[] opts={getString(R.string.repeat_off),getString(R.string.repeat_ayat),getString(R.string.repeat_surah),getString(R.string.repeat_juz)};
+        spR.setPadding(10,0,10,25);
+        spR.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,opts));
+        int pos=0;
+        if("ayat".equals(pm.state.repeatMode)) pos=1;
+        else if("surah".equals(pm.state.repeatMode)) pos=2;
+        else if("juz".equals(pm.state.repeatMode)) pos=3;
+        spR.setSelection(pos);
+        spR.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(AdapterView<?> p,View v,int position,long id){
+                String[] modes={"off","ayat","surah","juz"};
+                pm.state.repeatMode=modes[position];
+                storage.setRepeatMode(pm.state.repeatMode); updateAllViews();
+            }
+            public void onNothingSelected(AdapterView<?> p){}
+        });
+        layout.addView(spR);
+        layout.addView(btn(R.string.btn_sleep_mode,0,v -> navigateTo(3)));
+        layout.addView(btn(R.string.btn_back_main,0,v -> { menuStack.clear(); showMenu(0); }));
+        updatePlayerStatus(tv,bP);
+        return scroll;
+    }
+    private void updatePlayerStatus(TextView tv,Button bP){
+        Data.Surah s=Data.SURAH[pm.state.surah-1];
+        String qariName=pm.getReciterName(pm.state.reciter);
+        StringBuilder sb=new StringBuilder();
+        sb.append(String.format(Locale.US,"Qari: %s\n%s\nAyat %d dari %d (Juz %d)",qariName,s.name,pm.state.ayat,s.verses,s.juz));
+        if(pm.state.rangePlayActive)
+            sb.append(String.format(Locale.US,"\n[Mode Tidur: Surah %s (%d) - Surah %s (%d) AKTIF]",
+                Data.SURAH[pm.state.startSurah-1].name,pm.state.startAyat,
+                Data.SURAH[pm.state.endSurah-1].name,pm.state.endAyat));
+        if(pm.state.sleepTimerActive) sb.append("\n[Sleep Timer: AKTIF]");
+        tv.setText(sb.toString());
+        boolean playing = false;
+        try { playing = player.isPlaying(); } catch(Exception e){}
+        bP.setText(playing ? R.string.btn_pause : R.string.btn_play);
+    }
+    private View buildAudioSettings(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+        ScrollView scroll=new ScrollView(this); scroll.addView(layout);
+        final TextView tv=new TextView(this); tv.setText(getString(R.string.lbl_volume,pm.state.volume));
+        tv.setTextColor(getResources().getColor(R.color.colorTextPrimary)); tv.setPadding(5,5,5,2);
+        layout.addView(tv);
+        SeekBar sb=new SeekBar(this); sb.setMax(100); sb.setProgress(pm.state.volume);
+        sb.setPadding(10,10,10,20);
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar s,int p,boolean fromUser){
+                if(fromUser){ pm.state.volume=p; tv.setText(getString(R.string.lbl_volume,p)); pm.applyVolume(); }
+            }
+            public void onStartTrackingTouch(SeekBar s){}
+            public void onStopTrackingTouch(SeekBar s){}
+        });
+        layout.addView(sb);
+        CheckBox cbTts=new CheckBox(this); cbTts.setText(R.string.tts_checkbox); cbTts.setContentDescription(getString(R.string.tts_checkbox_desc)); cbTts.setChecked(storage.getTtsEnabled()); cbTts.setPadding(10,15,10,15); cbTts.setOnCheckedChangeListener((bv, chk) -> { storage.setTtsEnabled(chk); Utils.speak(chk ? getString(R.string.toast_tts_on) : getString(R.string.toast_tts_off)); Utils.toast(this, chk ? getString(R.string.toast_tts_on) : getString(R.string.toast_tts_off), false); }); layout.addView(cbTts);
+        layout.addView(btn(R.string.btn_select_reciter,0,v -> navigateTo(6)));
+        layout.addView(btn(R.string.btn_save_all,0,v -> {
+            storage.saveAllSettings(pm.state.reciter,pm.state.repeatMode,pm.state.surah,pm.state.ayat,pm.state.volume);
+            Utils.speak("Seluruh pengaturan berhasil disimpan");
+            Utils.toast(this,getString(R.string.toast_saved),false);
+        }));
+        layout.addView(btn(R.string.btn_reset_settings,0,v -> navigateTo(8)));
+        layout.addView(btn(R.string.btn_back_main,0,v -> { menuStack.clear(); showMenu(0); }));
+        return scroll;
+    }
+    private View buildResetConfirm(){
+        LinearLayout l=new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(30,30,30,30);
+        TextView t=new TextView(this); t.setText(R.string.reset_confirm);
+        t.setTextSize(16); t.setTextColor(getResources().getColor(R.color.colorTextPrimary));
+        l.addView(t);
+        l.addView(btn(R.string.btn_yes_reset,0,v -> {
+            storage.factoryReset();
+            try { if(player.isPlaying()) player.stop(); player.reset(); } catch(Exception e){}
+            pm.state.surah=storage.getSurah(); pm.state.ayat=storage.getAyat();
+            pm.state.reciter=storage.getReciter(); pm.state.repeatMode=storage.getRepeatMode();
+            pm.state.volume=storage.getVolume(); pm.applyVolume();
+            Utils.speak("Pengaturan dikembalikan ke setelan awal");
+            Utils.toast(this,getString(R.string.toast_reset_ok),false);
+            menuStack.clear(); showMenu(0);
+        }));
+        l.addView(btn(R.string.btn_cancel,0,v -> goBack()));
+        return l;
+    }
+    private View buildReciterDialog(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+        ScrollView scroll=new ScrollView(this); scroll.addView(layout);
+        for(Data.Reciter r: Data.RECITERS){
+            boolean sel=r.code.equals(pm.state.reciter);
+            String label=(sel?"\u2714 (Terpilih) ":"")+r.name;
+            final Data.Reciter fr=r;
+            layout.addView(btnText(label,r.name,v -> {
+                if(!pm.state.reciter.equals(fr.code)){
+                    pm.state.reciter=fr.code; storage.setReciter(fr.code);
+                    Utils.speak("Qari diubah menjadi "+fr.name);
+                    pm.play(pm.state.surah,pm.state.ayat);
+                } else Utils.speak(fr.name+" sudah dipilih");
+                showMenu(6);
+            }));
+        }
+        TextView sp=new TextView(this); sp.setHeight(15); layout.addView(sp);
+        layout.addView(btn(R.string.btn_back_settings,0,v -> goBack()));
+        return scroll;
+    }
+    private View buildAbout(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(30,30,30,30);
+        TextView t=new TextView(this); t.setText(R.string.about_text);
+        t.setTextSize(16); t.setTextColor(getResources().getColor(R.color.colorTextPrimary));
+        layout.addView(t);
+        layout.addView(btn(R.string.btn_close,0,v -> goBack()));
+        return layout;
+    }
+
+    private View buildDoaList(){
+        LinearLayout layout=new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(20,20,20,20);
+        TextView info=new TextView(this);
+        info.setText("Berikut 15 doa harian pilihan. Pilih salah satu untuk melihat teks Arab, Latin, dan terjemahan.");
+        info.setTextSize(14); info.setPadding(10,5,10,15);
+        layout.addView(info);
+        ScrollView scroll=new ScrollView(this); LinearLayout inner=new LinearLayout(this); inner.setOrientation(LinearLayout.VERTICAL);
+        for(int i=0;i<DoaData.LIST.length;i++){
+            final int idx=i;
+            DoaData.Doa d=DoaData.LIST[i];
+            Button b=new Button(this);
+            b.setText(String.format(Locale.US,"%d. %s", i+1, d.judul));
+            b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+            b.setPadding(15,12,15,12); b.setMinHeight(120);
+            b.setContentDescription("Doa "+d.judul);
+            b.setOnClickListener(v -> { currentDoa=idx; navigateTo(10); });
+            inner.addView(b);
+        }
+        scroll.addView(inner); layout.addView(scroll);
+        return layout;
+    }
+
+    private View buildDoaDetail(int idx){
+        final DoaData.Doa d = DoaData.LIST[idx];
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(20,20,20,20);
+
+        TextView judul = new TextView(this);
+        judul.setText(d.judul);
+        judul.setTextSize(22);
+        judul.setPadding(10,5,10,10);
+        container.addView(judul);
+
+        TextView hint = new TextView(this);
+        hint.setText(R.string.doa_swipe_hint);
+        hint.setTextSize(12);
+        hint.setPadding(10,0,10,15);
+        container.addView(hint);
+
+        final LinearLayout page1 = new LinearLayout(this);
+        page1.setOrientation(LinearLayout.VERTICAL);
+
+        TextView lblArab = new TextView(this);
+        lblArab.setText(R.string.doa_arab_label);
+        lblArab.setTextSize(13);
+        lblArab.setPadding(10,10,10,5);
+        page1.addView(lblArab);
+
+        TextView txtArab = new TextView(this);
+        txtArab.setText(d.arab);
+        txtArab.setTextSize(22);
+        txtArab.setPadding(15,15,15,20);
+        txtArab.setGravity(Gravity.END);
+        txtArab.setLineSpacing(6,1.1f);
+        txtArab.setContentDescription("Teks Arab doa "+d.judul);
+        page1.addView(txtArab);
+
+        TextView lblLatin = new TextView(this);
+        lblLatin.setText(R.string.doa_latin_label);
+        lblLatin.setTextSize(13);
+        lblLatin.setPadding(10,10,10,5);
+        page1.addView(lblLatin);
+
+        TextView txtLatin = new TextView(this);
+        txtLatin.setText(d.latin);
+        txtLatin.setTextSize(18);
+        txtLatin.setPadding(15,15,15,25);
+        txtLatin.setLineSpacing(4,1.1f);
+        txtLatin.setContentDescription("Teks Latin doa "+d.judul);
+        page1.addView(txtLatin);
+
+        final LinearLayout page2 = new LinearLayout(this);
+        page2.setOrientation(LinearLayout.VERTICAL);
+        page2.setVisibility(View.GONE);
+
+        TextView lblArti = new TextView(this);
+        lblArti.setText(R.string.doa_arti_label);
+        lblArti.setTextSize(13);
+        lblArti.setPadding(10,10,10,5);
+        page2.addView(lblArti);
+
+        TextView txtArti = new TextView(this);
+        txtArti.setText(d.arti);
+        txtArti.setTextSize(18);
+        txtArti.setPadding(15,15,15,25);
+        txtArti.setLineSpacing(4,1.1f);
+        txtArti.setContentDescription("Terjemahan doa "+d.judul);
+        page2.addView(txtArti);
+
+        final FrameLayout flipper = new FrameLayout(this);
+        flipper.addView(page1);
+        flipper.addView(page2);
+
+        final GestureDetector gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener(){
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy){
+                if(e1==null||e2==null) return false;
+                float dx = e2.getX() - e1.getX();
+                if(dx > 80){
+                    page1.setVisibility(View.GONE);
+                    page2.setVisibility(View.VISIBLE);
+                    return true;
+                } else if(dx < -80){
+                    page2.setVisibility(View.GONE);
+                    page1.setVisibility(View.VISIBLE);
+                    return true;
+                }
+                return false;
+            }
+        });
+        flipper.setOnTouchListener((v,ev) -> gd.onTouchEvent(ev));
+        page1.setOnTouchListener((v,ev) -> gd.onTouchEvent(ev));
+        page2.setOnTouchListener((v,ev) -> gd.onTouchEvent(ev));
+
+        container.addView(flipper);
+
+        LinearLayout rowNav = new LinearLayout(this);
+        rowNav.setOrientation(LinearLayout.HORIZONTAL);
+        rowNav.setPadding(0,25,0,5);
+        Button bPrev = new Button(this);
+        bPrev.setText(R.string.btn_doa_prev);
+        bPrev.setContentDescription(getString(R.string.cd_doa_prev));
+        bPrev.setMinHeight(120);
+        Button bNext = new Button(this);
+        bNext.setText(R.string.btn_doa_next);
+        bNext.setContentDescription(getString(R.string.cd_doa_next));
+        bNext.setMinHeight(120);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
+        lp.setMargins(2,2,2,2);
+        bPrev.setLayoutParams(lp);
+        bNext.setLayoutParams(lp);
+        bPrev.setOnClickListener(v -> { if(currentDoa>0) currentDoa--; else currentDoa=DoaData.LIST.length-1; showMenu(10); });
+        bNext.setOnClickListener(v -> { if(currentDoa<DoaData.LIST.length-1) currentDoa++; else currentDoa=0; showMenu(10); });
+        rowNav.addView(bPrev);
+        rowNav.addView(bNext);
+        container.addView(rowNav);
+
+        container.addView(btn(R.string.btn_doa_back,0,v -> { menuStack.clear(); showMenu(9); }));
+
+        ScrollView outer = new ScrollView(this);
+        outer.addView(container);
+        return outer;
+    }
+
+    public static PlayerManager getStaticPm(){ return staticPm; }
+}
+
+##### JAVA: PlayerManager.java #####
+package com.kausar.audiokuran;
+
+import android.content.Context;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.os.Handler;
+import android.os.Looper;
+import java.util.Locale;
+
+public class PlayerManager {
+    public interface Listener { void onUpdate(); }
+    public static String[] AUDIO_SOURCES = new String[]{
+        "https://everyayah.com/data/%s/%03d%03d.mp3",
+        "https://download.quranicaudio.com/quran/%s/%03d%03d.mp3",
+        "https://server8.mp3quran.net/%s/%03d%03d.mp3"
+    };
+    public static class State {
+        public int surah, ayat;
+        public String reciter="Alafasy_128kbps";
+        public String repeatMode="off";
+        public int volume=100;
+        public boolean rangePlayActive=false;
+        public int startSurah=2,startAyat=1,endSurah=2,endAyat=142;
+        public boolean isExiting=false, sleepTimerActive=false;
+        public int retryCount=0;
+    }
+    public State state = new State();
+    private MediaPlayer player; private Context ctx; private Storage storage;
+    private Listener listener; private Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable sleepRunnable;
+
+    public PlayerManager(Context ctx, Storage st, MediaPlayer p, Listener l){
+        this.ctx=ctx; this.storage=st; this.player=p; this.listener=l;
+    }
+    public MediaPlayer getPlayer(){ return player; }
+    public void setListener(Listener l){ this.listener=l; }
+
+    public String getReciterName(String code){
+        for(Data.Reciter r: Data.RECITERS) if(r.code.equals(code)) return r.name;
+        return "Mishary Rashid Alafasy";
+    }
+    public int getJuzIndex(int surah,int ayat){
+        for(int i=29;i>=0;i--){ Data.JuzStart js=Data.JUZ_START[i];
+            if(surah>js.surah||(surah==js.surah&&ayat>=js.ayat)) return i+1; }
+        return 1;
+    }
+    public int[] getNextPosition(int surah,int ayat){
+        int max=Data.SURAH[surah-1].verses;
+        if(ayat<max) return new int[]{surah,ayat+1};
+        else if(surah<114) return new int[]{surah+1,1};
+        else return new int[]{surah,max+1};
+    }
+    public int comparePosition(int s1,int a1,int s2,int a2){
+        if(s1!=s2) return s1<s2?-1:1;
+        if(a1!=a2) return a1<a2?-1:1;
+        return 0;
+    }
+    public String getUrl(int surah,int ayat,int sourceIndex){
+        if("Muhammad_Ayyoub_Full".equals(state.reciter))
+            return String.format(Locale.US,"https://server8.mp3quran.net/ayyub/%03d.mp3",surah);
+        if(sourceIndex<1||sourceIndex>AUDIO_SOURCES.length) return null;
+        return String.format(Locale.US,AUDIO_SOURCES[sourceIndex-1],state.reciter,surah,ayat);
+    }
+    public void applyVolume(){
+        try { float v=state.volume/100.0f; player.setVolume(v,v); } catch(Exception e){}
+    }
+    public void startSleepTimer(int minutes){
+        cancelSleepTimer();
+        if(minutes>0){
+            state.sleepTimerActive=true;
+            sleepRunnable = () -> {
+                state.sleepTimerActive=false; state.rangePlayActive=false;
+                try { if(player.isPlaying()) player.stop(); player.reset(); } catch(Exception e){}
+                Utils.speak("Waktu tidur selesai. Pemutaran dihentikan.");
+                Utils.toast(ctx,"Sleep timer selesai.",false);
+                if(listener!=null) listener.onUpdate();
+            };
+            handler.postDelayed(sleepRunnable, minutes*60L*1000L);
+        }
+    }
+    public void cancelSleepTimer(){
+        if(sleepRunnable!=null){ handler.removeCallbacks(sleepRunnable); sleepRunnable=null; }
+        state.sleepTimerActive=false;
+    }
+    public void play(int surahIn,int ayatIn){ play(surahIn,ayatIn,1,false); }
+    public void play(int surahIn,int ayatIn,int sourceIndex,boolean isRetry){
+        int surah=surahIn, ayat=ayatIn;
+        if(surah<1) surah=1;
+        if(surah>Data.SURAH.length) surah=Data.SURAH.length;
+        int maxAyat = Data.SURAH[surah-1].verses;
+        if("Muhammad_Ayyoub_Full".equals(state.reciter)) ayat=1;
+        else {
+            if(ayat<1){ if(surah>1){surah=surah-1;ayat=Data.SURAH[surah-1].verses;} else ayat=1; }
+            else if(ayat>maxAyat){
+                if(surah<Data.SURAH.length){surah=surah+1;ayat=1;}
+                else {
+                    if(state.rangePlayActive){
+                        state.rangePlayActive=false;
+                        Utils.speak("Pemutaran rentang ayat selesai.");
+                        Utils.toast(ctx,"Pemutaran selesai.",false);
+                        if(listener!=null) listener.onUpdate(); return;
+                    }
+                    Utils.speak("Pembacaan Al-Qur'an selesai."); return;
+                }
+            }
+        }
+        if(state.rangePlayActive){
+            if(comparePosition(surah,ayat,state.endSurah,state.endAyat)>0){
+                state.rangePlayActive=false;
+                try { if(player.isPlaying()) player.stop(); player.reset(); } catch(Exception e){}
+                Utils.speak("Pemutaran sampai Surah "+Data.SURAH[state.endSurah-1].name+" ayat "+state.endAyat+" telah selesai. Selamat tidur.");
+                Utils.toast(ctx,String.format(Locale.US,"Pemutaran otomatis berhenti (Mencapai batas Surah %s Ayat %d).",Data.SURAH[state.endSurah-1].name,state.endAyat),true);
+                if(listener!=null) listener.onUpdate(); return;
+            }
+        }
+        state.surah=surah; state.ayat=ayat;
+        storage.saveState(surah,ayat);
+        if(listener!=null) listener.onUpdate();
+        if(!isRetry) state.retryCount=0;
+
+        final String url = getUrl(surah,ayat,sourceIndex);
+        if(url==null){
+            try { player.reset(); } catch(Exception e){}
+            Utils.toast(ctx,"Semua sumber audio gagal. Periksa koneksi atau pilih qari lain.",true);
+            Utils.speak("Audio tidak tersedia untuk qari ini. Silakan pilih qari lain.");
+            state.rangePlayActive=false; cancelSleepTimer();
+            if(listener!=null) listener.onUpdate(); return;
+        }
+        try {
+            player.reset();
+            player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            player.setDataSource(url);
+            player.setOnPreparedListener(mp -> {
+                state.retryCount=0;
+                float v=state.volume/100.0f; mp.setVolume(v,v); mp.start();
+                if(listener!=null) listener.onUpdate();
+            });
+            player.setOnCompletionListener(mp -> onComplete());
+            final int fSurah = surah; final int fAyat = ayat; final int fSource = sourceIndex;
+            player.setOnErrorListener((mp,w,e) -> {
+                state.retryCount++;
+                if(state.retryCount<AUDIO_SOURCES.length){
+                    int nextSource=fSource+1;
+                    Utils.toast(ctx,"Gagal memutar dari sumber ke-"+sourceIndex+". Mencoba sumber ke-"+nextSource+"...",true);
+                    Utils.speak("Mencoba sumber audio alternatif.");
+                    play(fSurah,fAyat,nextSource,true);
+                } else {
+                    Utils.toast(ctx,"Semua sumber audio gagal untuk ayat ini. Periksa koneksi atau pilih qari lain.",true);
+                    Utils.speak("Audio tidak tersedia untuk qari ini. Silakan pilih qari lain.");
+                    try { mp.reset(); } catch(Exception ex){}
+                    state.rangePlayActive=false; cancelSleepTimer();
+                    if(listener!=null) listener.onUpdate();
+                }
+                return true;
+            });
+            player.prepareAsync();
+        } catch(Exception e){ Utils.toast(ctx,"Error: "+e.getMessage(),true); }
+    }
+    private void onComplete(){
+        if(state.sleepTimerActive && !state.rangePlayActive){
+            cancelSleepTimer();
+            try { player.reset(); } catch(Exception e){}
+            Utils.speak("Waktu tidur selesai. Pemutaran dihentikan.");
+            Utils.toast(ctx,"Sleep timer selesai.",false);
+            if(listener!=null) listener.onUpdate(); return;
+        }
+        String mode = state.repeatMode; int ns,na;
+        if("Muhammad_Ayyoub_Full".equals(state.reciter)){
+            if("surah".equals(mode)||"ayat".equals(mode)){ ns=state.surah; na=1; }
+            else {
+                ns=state.surah+1;
+                if(ns>114){
+                    if(state.rangePlayActive){
+                        state.rangePlayActive=false;
+                        Utils.speak("Pemutaran rentang surah selesai.");
+                        Utils.toast(ctx,"Pemutaran selesai.",false);
+                        if(listener!=null) listener.onUpdate(); return;
+                    }
+                    Utils.speak("Pembacaan Al-Qur'an selesai."); return;
+                }
+                na=1;
+            }
+        } else {
+            if("ayat".equals(mode)){ final int rS=state.surah; final int rA=state.ayat; if(storage.getTtsEnabled()){ String t2=TerjemahanCache.get(rS,rA); if(t2!=null && t2.length()>0){ Utils.speakWithCallback(t2, new Utils.OnDone(){ public void run(){ play(rS,rA); } }); } else { play(rS,rA); } } else { play(rS,rA); } return; }
+            else if("surah".equals(mode) && state.ayat>=Data.SURAH[state.surah-1].verses){ ns=state.surah; na=1; }
+            else if("juz".equals(mode)){
+                int curJuz=getJuzIndex(state.surah,state.ayat);
+                int[] na2=getNextPosition(state.surah,state.ayat);
+                int nextJuz=getJuzIndex(na2[0],na2[1]);
+                if(curJuz!=nextJuz){ Data.JuzStart js=Data.JUZ_START[curJuz-1]; ns=js.surah; na=js.ayat; }
+                else { ns=na2[0]; na=na2[1]; }
+            } else { int[] np=getNextPosition(state.surah,state.ayat); ns=np[0]; na=np[1]; }
+        }
+        final int fNs=ns; final int fNa=na; if(storage.getTtsEnabled()){ String ter=TerjemahanCache.get(state.surah,state.ayat); if(ter!=null && ter.length()>0){ Utils.speakWithCallback(ter, new Utils.OnDone(){ public void run(){ play(fNs,fNa); } }); } else { play(fNs,fNa); } } else { play(fNs,fNa); }
+    }
+}
+
+##### JAVA: Storage.java #####
+package com.kausar.audiokuran;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+public class Storage {
+    public static final String PREFS_NAME = "quran_player_smart_prefs";
+    private SharedPreferences prefs;
+    public Storage(Context ctx){ this.prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE); }
+    public String getReciter(){ return prefs.getString("selected_reciter","Alafasy_128kbps"); }
+    public void setReciter(String c){ prefs.edit().putString("selected_reciter",c).apply(); }
+    public int getSurah(){ return prefs.getInt("surah_idx",1); }
+    public int getAyat(){ return prefs.getInt("ayat_idx",1); }
+    public void saveState(int s,int a){ prefs.edit().putInt("surah_idx",s).putInt("ayat_idx",a).apply(); }
+    public String getRepeatMode(){ return prefs.getString("repeat_mode","off"); }
+    public void setRepeatMode(String m){ prefs.edit().putString("repeat_mode",m).apply(); }
+    public int getVolume(){ return prefs.getInt("player_volume",100); }
+    public void saveAllSettings(String r,String m,int s,int a,int v){
+        prefs.edit().putString("selected_reciter",r).putString("repeat_mode",m)
+            .putInt("surah_idx",s).putInt("ayat_idx",a).putInt("player_volume",v).apply();
+    }
+    public void factoryReset(){ prefs.edit().clear().apply(); }
+    public boolean getTtsEnabled(){ return prefs.getBoolean("tts_enabled", true); }
+    public void setTtsEnabled(boolean b){ prefs.edit().putBoolean("tts_enabled", b).apply(); }
+}
+
+##### JAVA: TerjemahanCache.java #####
+package com.kausar.audiokuran;
+
+import android.os.Handler;
+import android.os.Looper;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.HashMap;
+
+public class TerjemahanCache {
+    public interface Callback { void onReady(boolean ok); }
+
+    private static HashMap<String,String> cache = new HashMap<>();
+    private static HashMap<Integer,Boolean> loading = new HashMap<>();
+
+    public static String get(int surah, int ayat){
+        return cache.get(surah + ":" + ayat);
+    }
+
+    public static boolean isLoaded(int surah){
+        return cache.containsKey(surah + ":1");
+    }
+
+    public static void fetch(final int surah, final Callback cb){
+        if(isLoaded(surah)){ if(cb!=null) cb.onReady(true); return; }
+        if(loading.containsKey(surah)){ if(cb!=null) cb.onReady(false); return; }
+        loading.put(surah, true);
+        new Thread(new Runnable(){
+            public void run(){
+                boolean ok = false;
+                HttpURLConnection conn = null;
+                try {
+                    URL url = new URL("https://equran.id/api/v2/surat/" + surah);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(15000);
+                    conn.setRequestMethod("GET");
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while((line = br.readLine()) != null) sb.append(line);
+                    br.close();
+                    JSONObject root = new JSONObject(sb.toString());
+                    JSONObject data = root.getJSONObject("data");
+                    JSONArray ayatArr = data.getJSONArray("ayat");
+                    for(int i=0;i<ayatArr.length();i++){
+                        JSONObject a = ayatArr.getJSONObject(i);
+                        int no = a.getInt("nomorAyat");
+                        String ter = a.getString("teksIndonesia");
+                        cache.put(surah + ":" + no, ter);
+                    }
+                    ok = true;
+                } catch(Exception e){
+                    ok = false;
+                } finally {
+                    if(conn!=null) try { conn.disconnect(); } catch(Exception e){}
+                    loading.remove(surah);
+                }
+                final boolean fOk = ok;
+                new Handler(Looper.getMainLooper()).post(new Runnable(){
+                    public void run(){ if(cb!=null) cb.onReady(fOk); }
+                });
+            }
+        }).start();
+    }
+}
+
+##### JAVA: Utils.java #####
+package com.kausar.audiokuran;
+
+import android.content.Context;
+import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.widget.Toast;
+import java.util.Locale;
+
+public class Utils {
+    public static TextToSpeech tts;
+    private static String lastUtteranceId = "quran";
+
+    public interface OnDone { void run(); }
+    private static OnDone pendingDone = null;
+
+    public static void initTTS(Context ctx){
+        if(tts==null){
+            tts = new TextToSpeech(ctx, status -> {
+                if(status==TextToSpeech.SUCCESS){
+                    tts.setLanguage(Locale.getDefault());
+                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
+                        public void onStart(String id){}
+                        public void onDone(String id){
+                            if(pendingDone!=null){
+                                OnDone d = pendingDone;
+                                pendingDone = null;
+                                new android.os.Handler(android.os.Looper.getMainLooper()).post(d::run);
+                            }
+                        }
+                        public void onError(String id){
+                            if(pendingDone!=null){
+                                OnDone d = pendingDone;
+                                pendingDone = null;
+                                new android.os.Handler(android.os.Looper.getMainLooper()).post(d::run);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    public static void speak(String t){
+        try { if(tts!=null && t!=null && !t.isEmpty()) tts.speak(t, TextToSpeech.QUEUE_FLUSH, null, "quran"); } catch(Exception e){}
+    }
+
+    public static void speakWithCallback(String t, OnDone done){
+        try {
+            if(tts==null || t==null || t.isEmpty()){ if(done!=null) done.run(); return; }
+            pendingDone = done;
+            tts.speak(t, TextToSpeech.QUEUE_FLUSH, null, "quran_cb");
+        } catch(Exception e){
+            pendingDone = null;
+            if(done!=null) done.run();
+        }
+    }
+
+    public static void toast(Context c, String t, boolean isLong){
+        try { Toast.makeText(c, t, isLong?Toast.LENGTH_LONG:Toast.LENGTH_SHORT).show(); } catch(Exception e){}
+    }
+}
+
