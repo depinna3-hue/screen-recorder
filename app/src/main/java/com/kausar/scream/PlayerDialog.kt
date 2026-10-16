@@ -1,5 +1,6 @@
 package com.kausar.scream
 
+import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
@@ -32,76 +33,92 @@ object PlayerDialog {
         else String.format(Locale.US, "%02d:%02d", m, s)
     }
 
-    /**
-     * Setelah rekaman selesai: dialog pilihan Simpan / Putar / Bagikan / Bagikan+simpan / Batal.
-     * uriStr & path mengarah ke file yang sudah dipublish (atau temp jika belum).
-     */
-    fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String, note: String = "") {
-        val wrapped = LanguageManager.wrap(ctx)
-        val durationLabel = wrapped.getString(R.string.duration)
-        val locationLabel = wrapped.getString(R.string.player_location)
-        val subtitle = "$durationLabel: $durText" +
-            (if (path.isNotEmpty()) "\n\n$locationLabel:\n$path" else "") +
-            (if (note.isNotEmpty()) "\n\n$note" else "")
-
-        if (uriStr.isEmpty() && path.isEmpty()) {
-            AlertDialog.Builder(wrapped)
-                .setTitle(wrapped.getString(R.string.player_stopped))
-                .setMessage(subtitle)
-                .setPositiveButton(wrapped.getString(R.string.player_ok), null)
-                .show()
-            return
+    private fun safeCtx(ctx: Context): Context? {
+        val base = try { LanguageManager.wrap(ctx) } catch (_: Exception) { ctx }
+        if (base is Activity) {
+            if (base.isFinishing) return null
+            if (android.os.Build.VERSION.SDK_INT >= 17 && base.isDestroyed) return null
         }
+        return base
+    }
 
-        val items = arrayOf(
-            wrapped.getString(R.string.action_save),
-            wrapped.getString(R.string.action_play),
-            wrapped.getString(R.string.action_share),
-            wrapped.getString(R.string.action_share_save),
-            wrapped.getString(R.string.action_cancel)
-        )
-
-        AlertDialog.Builder(wrapped)
-            .setTitle(wrapped.getString(R.string.action_title))
-            .setMessage(subtitle)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> {
-                        Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
-                    }
-                    1 -> {
-                        playUri(wrapped, uriStr, path, durText)
-                    }
-                    2 -> {
-                        share(wrapped, uriStr, path)
-                    }
-                    3 -> {
-                        share(wrapped, uriStr, path)
-                        Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
-                    }
-                    4 -> {
-                        // Batal: coba hapus file jika path lokal
-                        try {
-                            if (path.isNotEmpty()) {
-                                val f = File(path)
-                                if (f.exists()) f.delete()
-                            }
-                            if (uriStr.isNotEmpty()) {
-                                try {
-                                    wrapped.contentResolver.delete(Uri.parse(uriStr), null, null)
-                                } catch (_: Exception) {}
-                            }
-                        } catch (_: Exception) {}
-                        Toast.makeText(wrapped, wrapped.getString(R.string.action_discarded), Toast.LENGTH_SHORT).show()
-                    }
+    private fun runUi(ctx: Context, block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            try { block() } catch (e: Exception) {
+                try { Toast.makeText(ctx.applicationContext, e.message ?: "error", Toast.LENGTH_SHORT).show() } catch (_: Exception) {}
+            }
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                try { block() } catch (e: Exception) {
+                    try { Toast.makeText(ctx.applicationContext, e.message ?: "error", Toast.LENGTH_SHORT).show() } catch (_: Exception) {}
                 }
             }
-            .setNegativeButton(wrapped.getString(R.string.settings_close), null)
-            .show()
+        }
+    }
+
+    fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String, note: String = "") {
+        runUi(ctx) {
+            val wrapped = safeCtx(ctx) ?: return@runUi
+            val durationLabel = wrapped.getString(R.string.duration)
+            val locationLabel = wrapped.getString(R.string.player_location)
+            val subtitle = "$durationLabel: $durText" +
+                (if (path.isNotEmpty()) "\n\n$locationLabel:\n$path" else "") +
+                (if (note.isNotEmpty()) "\n\n$note" else "")
+
+            if (uriStr.isEmpty() && path.isEmpty()) {
+                AlertDialog.Builder(wrapped)
+                    .setTitle(wrapped.getString(R.string.player_stopped))
+                    .setMessage(subtitle.ifEmpty { wrapped.getString(R.string.status_stopped) })
+                    .setPositiveButton(wrapped.getString(R.string.player_ok), null)
+                    .show()
+                return@runUi
+            }
+
+            val items = arrayOf(
+                wrapped.getString(R.string.action_save),
+                wrapped.getString(R.string.action_play),
+                wrapped.getString(R.string.action_share),
+                wrapped.getString(R.string.action_share_save),
+                wrapped.getString(R.string.action_cancel)
+            )
+
+            AlertDialog.Builder(wrapped)
+                .setTitle(wrapped.getString(R.string.action_title))
+                .setMessage(subtitle)
+                .setItems(items) { d, which ->
+                    try {
+                        when (which) {
+                            0 -> Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
+                            1 -> playUri(wrapped, uriStr, path, durText)
+                            2 -> share(wrapped, uriStr, path)
+                            3 -> {
+                                share(wrapped, uriStr, path)
+                                Toast.makeText(wrapped, wrapped.getString(R.string.action_saved), Toast.LENGTH_SHORT).show()
+                            }
+                            4 -> {
+                                try {
+                                    if (path.isNotEmpty()) {
+                                        val f = File(path)
+                                        if (f.exists() && f.canWrite()) f.delete()
+                                    }
+                                    if (uriStr.isNotEmpty() && uriStr.startsWith("content:")) {
+                                        try { wrapped.contentResolver.delete(Uri.parse(uriStr), null, null) } catch (_: Exception) {}
+                                    }
+                                } catch (_: Exception) {}
+                                Toast.makeText(wrapped, wrapped.getString(R.string.action_discarded), Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(wrapped.applicationContext, e.message ?: "err", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton(wrapped.getString(R.string.settings_close), null)
+                .show()
+        }
     }
 
     private fun playUri(ctx: Context, uriStr: String, path: String, durText: String) {
-        val wrapped = LanguageManager.wrap(ctx)
+        val wrapped = safeCtx(ctx) ?: return
         if (uriStr.isEmpty()) {
             Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_LONG).show()
             return
@@ -122,11 +139,17 @@ object PlayerDialog {
     }
 
     private fun share(ctx: Context, uriStr: String, path: String) {
-        val wrapped = LanguageManager.wrap(ctx)
+        val wrapped = safeCtx(ctx) ?: return
         try {
             val uri = when {
                 uriStr.isNotEmpty() -> Uri.parse(uriStr)
-                path.isNotEmpty() -> Uri.fromFile(File(path))
+                path.isNotEmpty() && File(path).exists() -> {
+                    // Hindari Uri.fromFile (crash FileUriExposedException)
+                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                    // fallback: hanya content URI
+                    Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_SHORT).show()
+                    return
+                }
                 else -> null
             }
             if (uri == null) {
@@ -141,12 +164,12 @@ object PlayerDialog {
             }
             ctx.startActivity(Intent.createChooser(send, wrapped.getString(R.string.share_via)))
         } catch (e: Exception) {
-            Toast.makeText(wrapped, e.message ?: "share", Toast.LENGTH_SHORT).show()
+            Toast.makeText(wrapped.applicationContext, e.message ?: "share", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun show(ctx: Context, uri: Uri, title: String, subtitle: String, isVideo: Boolean, autoPlay: Boolean) {
-        val wrapped = LanguageManager.wrap(ctx)
+        val wrapped = safeCtx(ctx) ?: return
         val density = wrapped.resources.displayMetrics.density
         fun dp(v: Int): Int = (v * density + 0.5f).toInt()
 
@@ -252,6 +275,7 @@ object PlayerDialog {
         }
 
         fun onReady() {
+            if (dismissed) return
             ready = true
             val d = durMs().coerceAtLeast(1)
             seek.max = d
@@ -271,23 +295,23 @@ object PlayerDialog {
         }
 
         fun onError() {
-            Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_LONG).show()
+            try { Toast.makeText(wrapped, wrapped.getString(R.string.player_fail), Toast.LENGTH_LONG).show() } catch (_: Exception) {}
             btnPlay.text = wrapped.getString(R.string.player_play)
         }
 
         btnPlay.setOnClickListener {
-            if (!ready) return@setOnClickListener
+            if (!ready || dismissed) return@setOnClickListener
             if (isPlaying()) doPause() else doPlay()
         }
         btnBack.setOnClickListener {
-            if (!ready) return@setOnClickListener
+            if (!ready || dismissed) return@setOnClickListener
             val p = (posMs() - 10_000).coerceAtLeast(0)
             seekP(p)
             seek.progress = p
             cur.text = clock(p.toLong())
         }
         btnFwd.setOnClickListener {
-            if (!ready) return@setOnClickListener
+            if (!ready || dismissed) return@setOnClickListener
             val p = (posMs() + 10_000).coerceAtMost(durMs())
             seekP(p)
             seek.progress = p
@@ -326,26 +350,29 @@ object PlayerDialog {
             }
         } catch (e: Exception) {
             try { player?.release() } catch (_: Exception) {}
-            Toast.makeText(wrapped, wrapped.getString(R.string.player_fail_msg, e.message ?: ""), Toast.LENGTH_LONG).show()
+            try {
+                Toast.makeText(wrapped, wrapped.getString(R.string.player_fail_msg, e.message ?: ""), Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {}
             return
         }
 
-        val dialog = AlertDialog.Builder(wrapped)
-            .setTitle(title)
-            .setView(root)
-            .setPositiveButton(wrapped.getString(R.string.player_close), null)
-            .create()
-        dialog.setOnDismissListener {
-            dismissed = true
-            handler.removeCallbacksAndMessages(null)
-            try { videoView?.stopPlayback() } catch (_: Exception) {}
-            try { player?.release() } catch (_: Exception) {}
-        }
         try {
+            val dialog = AlertDialog.Builder(wrapped)
+                .setTitle(title)
+                .setView(root)
+                .setPositiveButton(wrapped.getString(R.string.player_close), null)
+                .create()
+            dialog.setOnDismissListener {
+                dismissed = true
+                handler.removeCallbacksAndMessages(null)
+                try { videoView?.stopPlayback() } catch (_: Exception) {}
+                try { player?.release() } catch (_: Exception) {}
+            }
             dialog.show()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             dismissed = true
             try { player?.release() } catch (_: Exception) {}
+            try { Toast.makeText(wrapped.applicationContext, e.message ?: "dialog", Toast.LENGTH_SHORT).show() } catch (_: Exception) {}
         }
     }
 }
