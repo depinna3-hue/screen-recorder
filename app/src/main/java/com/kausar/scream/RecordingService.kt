@@ -32,6 +32,7 @@ class RecordingService : Service() {
     companion object {
         const val ACTION_START = "com.kausar.scream.START"
         const val ACTION_STOP = "com.kausar.scream.STOP"
+        const val ACTION_BOOKMARK = "com.kausar.scream.BOOKMARK"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_IS_SCREEN = "is_screen"
@@ -40,6 +41,11 @@ class RecordingService : Service() {
         const val EXTRA_AUDIO_QUALITY = "audio_quality"
         const val EXTRA_VIDEO_QUALITY = "video_quality"
         const val EXTRA_AUDIO_FORMAT = "audio_format"
+        const val EXTRA_FORCE_STEREO = "force_stereo"
+        const val EXTRA_NOISE = "noise"
+        const val EXTRA_SKIP_SILENCE = "skip_silence"
+        const val EXTRA_DYNAMIC_GAIN = "dynamic_gain"
+        const val EXTRA_WHISPER = "whisper"
 
         const val BROADCAST_STATUS = "com.kausar.scream.STATUS"
         const val EXTRA_STATUS = "status"
@@ -48,16 +54,15 @@ class RecordingService : Service() {
         const val EXTRA_WANT_MP3 = "want_mp3"
 
         // --- Lanjutkan rekaman & pemutaran ---
-        const val EXTRA_CONTINUE_URI = "continue_uri"   // file lama yang akan disambung (content://)
-        const val EXTRA_CHANNELS = "channels"           // jumlah kanal file lama (untuk AAC)
-        const val EXTRA_URI = "uri"                     // alamat file hasil (untuk diputar)
-        const val EXTRA_SOURCE = "source"               // siapa yang memulai rekaman ini
-        const val EXTRA_NOTE = "note"                   // catatan tambahan (mis. gagal menggabungkan)
+        const val EXTRA_CONTINUE_URI = "continue_uri"
+        const val EXTRA_CHANNELS = "channels"
+        const val EXTRA_URI = "uri"
+        const val EXTRA_SOURCE = "source"
+        const val EXTRA_NOTE = "note"
         const val SOURCE_SCREEN = "screen"
         const val SOURCE_AUDIO = "audio"
         const val SOURCE_CONTINUE = "continue"
 
-        /** true selama ada rekaman berjalan / sedang disimpan. UI memakai ini agar tidak mulai ganda. */
         @Volatile
         var isRunning = false
 
@@ -69,12 +74,10 @@ class RecordingService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var mediaRecorder: MediaRecorder? = null
-    /** Satu sesi rekam WAV (mikrofon atau audio internal). Bisa ada dua sekaligus. */
     private class WavSession(val record: AudioRecord, val file: File, val out: FileOutputStream) {
         var thread: Thread? = null
     }
     private val wavSessions = ArrayList<WavSession>()
-    /** File tambahan yang ikut diterbitkan saat stop (mis. WAV audio internal). */
     private val extraFiles = ArrayList<File>()
     private var recording = false
     private var outputPath: String = ""
@@ -85,13 +88,19 @@ class RecordingService : Service() {
     private var source: String = SOURCE_AUDIO
     private var stoppedDurMs: Long = -1L
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var forceStereo = false
+    private var enableNoise = false
+    private var skipSilence = false
+    private var dynamicGain = false
+    private var whisperMode = false
+    private val bookmarks = ArrayList<Long>()
+    private var noiseSeed = 12345L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                // Sudah ada rekaman berjalan / sedang disimpan → abaikan permintaan kedua
                 if (isRunning) return START_STICKY
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = if (Build.VERSION.SDK_INT >= 33) {
@@ -108,6 +117,12 @@ class RecordingService : Service() {
                     audioFormat = intent.getIntExtra(EXTRA_AUDIO_FORMAT, RecorderConfig.FMT_AAC),
                     isScreen = intent.getBooleanExtra(EXTRA_IS_SCREEN, true)
                 )
+                forceStereo = intent.getBooleanExtra(EXTRA_FORCE_STEREO, false)
+                enableNoise = intent.getBooleanExtra(EXTRA_NOISE, false)
+                skipSilence = intent.getBooleanExtra(EXTRA_SKIP_SILENCE, false)
+                dynamicGain = intent.getBooleanExtra(EXTRA_DYNAMIC_GAIN, false)
+                whisperMode = intent.getBooleanExtra(EXTRA_WHISPER, false)
+                bookmarks.clear()
                 continueUri = intent.getStringExtra(EXTRA_CONTINUE_URI)?.let { Uri.parse(it) }
                 continueChannels = intent.getIntExtra(EXTRA_CHANNELS, 1)
                 source = when {
@@ -134,8 +149,14 @@ class RecordingService : Service() {
                     stopSelf()
                 }
             }
-            // Abaikan Stop kedua (mis. saat penggabungan masih berjalan) agar tidak diproses dua kali
             ACTION_STOP -> if (recording) stopAll()
+            ACTION_BOOKMARK -> {
+                if (recording && startTimeMs > 0) {
+                    val pos = System.currentTimeMillis() - startTimeMs
+                    bookmarks.add(pos)
+                    sendStatus("Bookmark ditambahkan di ${pos / 1000} detik", outputPath)
+                }
+            }
         }
         return START_STICKY
     }
@@ -275,12 +296,72 @@ class RecordingService : Service() {
         wavSessions.add(sess)
         recording = true
         ar.startRecording()
+        val inChannels = try {
+            if (Build.VERSION.SDK_INT >= 24 && ar.channelCount > 0) ar.channelCount else 1
+        } catch (_: Exception) { 1 }
         sess.thread = Thread {
             val buf = ByteArray(bufSize)
+            var silenceRun = 0
+            val silenceThresh = if (skipSilence) 800 else 0
+            var gain = 1.0f
             try {
                 while (recording && !Thread.interrupted()) {
                     val n = ar.read(buf, 0, buf.size)
-                    if (n > 0) synchronized(sess) { out.write(buf, 0, n) }
+                    if (n <= 0) continue
+                    var writeBuf = buf
+                    var writeLen = n
+
+                    if (enableNoise || dynamicGain || skipSilence || (forceStereo && inChannels == 1 && channels == 2)) {
+                        val samples = ShortArray(n / 2)
+                        java.nio.ByteBuffer.wrap(buf, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
+                        var peak = 0
+                        for (i in samples.indices) {
+                            val a = kotlin.math.abs(samples[i].toInt())
+                            if (a > peak) peak = a
+                        }
+
+                        if (dynamicGain) {
+                            if (peak < 2000) gain = (gain * 1.02f).coerceAtMost(8f)
+                            else if (peak > 12000) gain = (gain * 0.95f).coerceAtLeast(1f)
+                        }
+
+                        if (skipSilence) {
+                            if (peak < silenceThresh) {
+                                silenceRun++
+                                if (silenceRun > rate / 50) continue
+                            } else {
+                                silenceRun = 0
+                            }
+                        }
+
+                        for (i in samples.indices) {
+                            var s = samples[i].toInt()
+                            if (dynamicGain) s = (s * gain).toInt().coerceIn(-32768, 32767)
+                            if (enableNoise) {
+                                noiseSeed = noiseSeed * 1103515245L + 12345L
+                                val noise = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
+                                s = (s + noise / 8).coerceIn(-32768, 32767)
+                            }
+                            samples[i] = s.toShort()
+                        }
+
+                        if (forceStereo && inChannels == 1 && channels == 2) {
+                            val stereo = ShortArray(samples.size * 2)
+                            for (i in samples.indices) {
+                                stereo[i * 2] = samples[i]
+                                stereo[i * 2 + 1] = samples[i]
+                            }
+                            writeBuf = ByteArray(stereo.size * 2)
+                            java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(stereo)
+                            writeLen = writeBuf.size
+                        } else {
+                            writeBuf = ByteArray(samples.size * 2)
+                            java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(samples)
+                            writeLen = writeBuf.size
+                        }
+                    }
+
+                    synchronized(sess) { out.write(writeBuf, 0, writeLen) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "wav loop", e)
@@ -358,32 +439,36 @@ class RecordingService : Service() {
 
     private fun startMicFile(cfg: RecorderConfig) {
         if (cfg.audioFormat == RecorderConfig.FMT_WAV || cfg.audioFormat == RecorderConfig.FMT_MP3) {
-            // MP3 tidak ada encoder bawaan → direkam WAV
             val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
             outputPath = f.absolutePath
             val rate = cfg.sampleRate
-            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val channelConfig = if (forceStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+            val outChannels = if (forceStereo) 2 else 1
             val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-            val ar = AudioRecord(
-                MediaRecorder.AudioSource.MIC, rate, channelConfig,
-                AudioFormat.ENCODING_PCM_16BIT, minBuf * 2
-            )
+            val bufSize = minBuf.coerceAtLeast(rate) * 2
+            val source = if (whisperMode) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC
+            val ar = try {
+                AudioRecord(source, rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            } catch (_: Exception) {
+                AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            }
             if (ar.state != AudioRecord.STATE_INITIALIZED) {
                 ar.release()
                 throw IllegalStateException("Mic AudioRecord gagal")
             }
-            startWavSession(ar, f, rate, 1, minBuf * 2)
+            startWavSession(ar, f, rate, outChannels, bufSize)
         } else {
             outputPath = File(outDir("audio"), "mic_${System.currentTimeMillis()}.m4a").absolutePath
             @Suppress("DEPRECATION")
             val mr = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
             mediaRecorder = mr
-            mr.setAudioSource(MediaRecorder.AudioSource.MIC)
+            mr.setAudioSource(if (whisperMode) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC)
             mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             mr.setAudioEncodingBitRate(cfg.audioBitrate())
             mr.setAudioSamplingRate(cfg.sampleRate)
-            mr.setAudioChannels(if (continueUri != null) continueChannels.coerceIn(1, 2) else 1)
+            val ch = if (forceStereo || (continueUri != null && continueChannels > 1)) 2 else 1
+            mr.setAudioChannels(ch)
             mr.setOutputFile(outputPath)
             mr.prepare()
             mr.start()
@@ -498,8 +583,12 @@ class RecordingService : Service() {
             }
         }
         extraFiles.clear()
-        val extraNote = if (extraPaths.isEmpty()) "" else
+        var extraNote = if (extraPaths.isEmpty()) "" else
             "Audio internal disimpan sebagai file terpisah:\n" + extraPaths.joinToString("\n")
+        if (bookmarks.isNotEmpty()) {
+            val bmText = bookmarks.joinToString(", ") { "${it / 1000}s" }
+            extraNote = (if (extraNote.isEmpty()) "" else extraNote + "\n") + "Bookmark: $bmText"
+        }
 
         isRunning = false
         sendStatus("Rekaman selesai", finalPath, finalUri, extraNote)
