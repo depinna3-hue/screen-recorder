@@ -40,28 +40,30 @@ class MainActivity : AppCompatActivity() {
                 setBackgroundColor(Color.parseColor("#F0F2F5"))
             }
 
-            // Header
             val header = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.parseColor("#075E54"))
                 setPadding(dp(16), dp(18), dp(16), dp(12))
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                contentDescription = "Header aplikasi Kausar Recorder"
             }
             header.addView(TextView(this).apply {
                 text = "Kausar Recorder"
                 textSize = 20f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.WHITE)
+                contentDescription = "Judul aplikasi Kausar Recorder"
             })
             pageLabel = TextView(this).apply {
                 text = pageHints[0]
                 textSize = 13f
                 setTextColor(Color.parseColor("#D1F4DE"))
                 setPadding(0, dp(4), 0, 0)
+                contentDescription = pageHints[0]
             }
             header.addView(pageLabel)
             root.addView(header)
 
-            // Content pager
             pager = ViewPager2(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -78,7 +80,6 @@ class MainActivity : AppCompatActivity() {
             }
             root.addView(pager)
 
-            // Bottom tabs (seperti WhatsApp)
             val tabs = TabLayout(this).apply {
                 tabMode = TabLayout.MODE_FIXED
                 tabGravity = TabLayout.GRAVITY_FILL
@@ -94,16 +95,18 @@ class MainActivity : AppCompatActivity() {
 
             TabLayoutMediator(tabs, pager) { tab, pos ->
                 tab.text = tabTitles[pos]
+                tab.contentDescription = "Tab ${tabTitles[pos]}"
             }.attach()
 
             pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
                     pageLabel.text = pageHints[position]
+                    pageLabel.contentDescription = pageHints[position]
                 }
             })
 
             setContentView(root)
-            requestPerms()
+            requestAllPermissions()
         } catch (t: Throwable) {
             val tv = TextView(this)
             tv.text = "Gagal membuka UI:\n${t.message}"
@@ -113,11 +116,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestPerms() {
+    private fun requestAllPermissions() {
         val need = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) need.add(Manifest.permission.RECORD_AUDIO)
+
         if (Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -128,14 +132,22 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO)
                 != PackageManager.PERMISSION_GRANTED
             ) need.add(Manifest.permission.READ_MEDIA_VIDEO)
-        } else if (Build.VERSION.SDK_INT <= 28) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED
-            ) need.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            if (Build.VERSION.SDK_INT >= 23) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED
+                ) need.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            if (Build.VERSION.SDK_INT <= 28) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED
+                ) need.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
         }
         if (need.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, need.toTypedArray(), 991)
         }
+        RequestPermission.minta(this)
     }
 
     private fun dp(v: Int) = TypedValue.applyDimension(
