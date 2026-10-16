@@ -69,10 +69,13 @@ class RecordingService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var mediaRecorder: MediaRecorder? = null
-    private var audioRecord: AudioRecord? = null
-    private var wavThread: Thread? = null
-    private var wavFile: File? = null
-    private var wavOut: FileOutputStream? = null
+    /** Satu sesi rekam WAV (mikrofon atau audio internal). Bisa ada dua sekaligus. */
+    private class WavSession(val record: AudioRecord, val file: File, val out: FileOutputStream) {
+        var thread: Thread? = null
+    }
+    private val wavSessions = ArrayList<WavSession>()
+    /** File tambahan yang ikut diterbitkan saat stop (mis. WAV audio internal). */
+    private val extraFiles = ArrayList<File>()
     private var recording = false
     private var outputPath: String = ""
     private var startTimeMs: Long = 0L
@@ -126,7 +129,7 @@ class RecordingService : Service() {
                     sendStatus("Rekaman dimulai", outputPath)
                 } catch (e: Exception) {
                     Log.e(TAG, "start failed", e)
-                    recording = false
+                    abortRecorders()
                     sendStatus("Gagal: ${e.message}", "")
                     stopSelf()
                 }
@@ -247,33 +250,42 @@ class RecordingService : Service() {
 
         // Internal audio sebagai file WAV samping bila dipilih (satu sesi)
         if (needInternal) {
-            startInternalWav(cfg, File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav"))
+            val iw = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
+            startInternalWav(cfg, iw)
+            extraFiles.add(iw) // diterbitkan terpisah saat stop
         }
 
         mr.start()
         recording = true
     }
 
+    /** Internal audio saja (tanpa video): selalu disimpan sebagai WAV. */
     private fun startInternalAudioOnly(cfg: RecorderConfig) {
-        val ext = when (cfg.audioFormat) {
-            RecorderConfig.FMT_WAV -> "wav"
-            RecorderConfig.FMT_MP3 -> "m4a" // encoder sistem = AAC; ekstensi m4a (MP3 native tidak ada di API)
-            else -> "m4a"
-        }
-        // WAV paling andal untuk pure internal capture
-        if (cfg.audioFormat == RecorderConfig.FMT_WAV) {
-            val f = File(outDir("audio"), "internal_${System.currentTimeMillis()}.$ext")
-            if (cfg.audioFormat == RecorderConfig.FMT_WAV) {
-                startInternalWav(cfg, f)
-                outputPath = f.absolutePath
-            } else {
-                // AAC via AudioRecord + MediaCodec terlalu panjang; pakai WAV dulu lalu catat
-                val wav = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
-                startInternalWav(cfg, wav)
-                outputPath = wav.absolutePath
-            }
-        }
+        val f = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
+        startInternalWav(cfg, f)
+        outputPath = f.absolutePath
         recording = true
+    }
+
+    /** Mulai thread penulis WAV. recording harus sudah true sebelum thread jalan. */
+    private fun startWavSession(ar: AudioRecord, file: File, rate: Int, channels: Int, bufSize: Int) {
+        val out = FileOutputStream(file)
+        WavWriter.writeHeader(out, rate, channels)
+        val sess = WavSession(ar, file, out)
+        wavSessions.add(sess)
+        recording = true
+        ar.startRecording()
+        sess.thread = Thread {
+            val buf = ByteArray(bufSize)
+            try {
+                while (recording && !Thread.interrupted()) {
+                    val n = ar.read(buf, 0, buf.size)
+                    if (n > 0) synchronized(sess) { out.write(buf, 0, n) }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "wav loop", e)
+            }
+        }.also { it.start() }
     }
 
     private fun startInternalWav(cfg: RecorderConfig, file: File) {
@@ -308,26 +320,7 @@ class RecordingService : Service() {
             ar.release()
             throw IllegalStateException("AudioRecord internal gagal init")
         }
-
-        audioRecord = ar
-        wavFile = file
-        wavOut = FileOutputStream(file)
-        WavWriter.writeHeader(wavOut!!, rate, 2)
-        ar.startRecording()
-
-        wavThread = Thread {
-            val buf = ByteArray(bufSize)
-            try {
-                while (recording && !Thread.interrupted()) {
-                    val n = ar.read(buf, 0, buf.size)
-                    if (n > 0) {
-                        synchronized(this) { wavOut?.write(buf, 0, n) }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "wav loop", e)
-            }
-        }.also { it.start() }
+        startWavSession(ar, file, rate, 2, bufSize)
     }
 
     // -------------------- AUDIO (mic / internal / both) --------------------
@@ -344,11 +337,8 @@ class RecordingService : Service() {
 
         when {
             needInternal && !needMic -> {
-                // internal only
-                val f = File(
-                    outDir("audio"),
-                    "audio_${System.currentTimeMillis()}." + if (cfg.audioFormat == RecorderConfig.FMT_WAV) "wav" else "wav"
-                )
+                // internal saja
+                val f = File(outDir("audio"), "audio_${System.currentTimeMillis()}.wav")
                 startInternalWav(cfg, f)
                 outputPath = f.absolutePath
             }
@@ -356,107 +346,81 @@ class RecordingService : Service() {
                 startMicFile(cfg)
             }
             else -> {
-                // internal + mic: rekam keduanya ke WAV terpisah; mic ke MediaRecorder AAC
+                // internal + mikrofon: dua file terpisah (mikrofon = utama, internal = tambahan)
                 startMicFile(cfg)
                 val f = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
                 startInternalWav(cfg, f)
+                extraFiles.add(f)
             }
         }
         recording = true
     }
 
     private fun startMicFile(cfg: RecorderConfig) {
-        when (cfg.audioFormat) {
-            RecorderConfig.FMT_WAV -> {
-                val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
-                outputPath = f.absolutePath
-                val rate = cfg.sampleRate
-                val channelConfig = AudioFormat.CHANNEL_IN_MONO
-                val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-                val ar = AudioRecord(
-                    MediaRecorder.AudioSource.MIC, rate, channelConfig,
-                    AudioFormat.ENCODING_PCM_16BIT, minBuf * 2
-                )
-                if (ar.state != AudioRecord.STATE_INITIALIZED) {
-                    ar.release()
-                    throw IllegalStateException("Mic AudioRecord gagal")
-                }
-                audioRecord = ar
-                wavFile = f
-                wavOut = FileOutputStream(f)
-                WavWriter.writeHeader(wavOut!!, rate, 1)
-                ar.startRecording()
-                recording = true // harus true sebelum thread jalan, kalau tidak loop bisa langsung berhenti
-                wavThread = Thread {
-                    val buf = ByteArray(minBuf * 2)
-                    try {
-                        while (recording && !Thread.interrupted()) {
-                            val n = ar.read(buf, 0, buf.size)
-                            if (n > 0) synchronized(this) { wavOut?.write(buf, 0, n) }
-                        }
-                    } catch (_: Exception) {}
-                }.also { it.start() }
+        if (cfg.audioFormat == RecorderConfig.FMT_WAV || cfg.audioFormat == RecorderConfig.FMT_MP3) {
+            // MP3 tidak ada encoder bawaan → direkam WAV
+            val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
+            outputPath = f.absolutePath
+            val rate = cfg.sampleRate
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
+            val ar = AudioRecord(
+                MediaRecorder.AudioSource.MIC, rate, channelConfig,
+                AudioFormat.ENCODING_PCM_16BIT, minBuf * 2
+            )
+            if (ar.state != AudioRecord.STATE_INITIALIZED) {
+                ar.release()
+                throw IllegalStateException("Mic AudioRecord gagal")
             }
-            else -> {
-                // AAC langsung, atau MP3 → rekam WAV dulu lalu dikonversi di UI setelah stop
-                if (cfg.audioFormat == RecorderConfig.FMT_MP3) {
-                    val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
-                    outputPath = f.absolutePath
-                    val rate = cfg.sampleRate
-                    val channelConfig = AudioFormat.CHANNEL_IN_MONO
-                    val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-                    val ar = AudioRecord(
-                        MediaRecorder.AudioSource.MIC, rate, channelConfig,
-                        AudioFormat.ENCODING_PCM_16BIT, minBuf * 2
-                    )
-                    if (ar.state != AudioRecord.STATE_INITIALIZED) {
-                        ar.release()
-                        throw IllegalStateException("Mic AudioRecord gagal")
-                    }
-                    audioRecord = ar
-                    wavFile = f
-                    wavOut = FileOutputStream(f)
-                    WavWriter.writeHeader(wavOut!!, rate, 1)
-                    ar.startRecording()
-                    wavThread = Thread {
-                        val buf = ByteArray(minBuf * 2)
-                        try {
-                            while (recording && !Thread.interrupted()) {
-                                val n = ar.read(buf, 0, buf.size)
-                                if (n > 0) synchronized(this) { wavOut?.write(buf, 0, n) }
-                            }
-                        } catch (_: Exception) {}
-                    }.also { it.start() }
-                } else {
-                    outputPath = File(outDir("audio"), "mic_${System.currentTimeMillis()}.m4a").absolutePath
-                    @Suppress("DEPRECATION")
-                    val mr = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
-                    mediaRecorder = mr
-                    mr.setAudioSource(MediaRecorder.AudioSource.MIC)
-                    mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                    mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                    mr.setAudioEncodingBitRate(cfg.audioBitrate())
-                    mr.setAudioSamplingRate(cfg.sampleRate)
-                    mr.setAudioChannels(if (continueUri != null) continueChannels.coerceIn(1, 2) else 1)
-                    mr.setOutputFile(outputPath)
-                    mr.prepare()
-                    mr.start()
-                }
-            }
+            startWavSession(ar, f, rate, 1, minBuf * 2)
+        } else {
+            outputPath = File(outDir("audio"), "mic_${System.currentTimeMillis()}.m4a").absolutePath
+            @Suppress("DEPRECATION")
+            val mr = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
+            mediaRecorder = mr
+            mr.setAudioSource(MediaRecorder.AudioSource.MIC)
+            mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            mr.setAudioEncodingBitRate(cfg.audioBitrate())
+            mr.setAudioSamplingRate(cfg.sampleRate)
+            mr.setAudioChannels(if (continueUri != null) continueChannels.coerceIn(1, 2) else 1)
+            mr.setOutputFile(outputPath)
+            mr.prepare()
+            mr.start()
         }
+    }
+
+    /** Bersihkan semua perekam bila start gagal di tengah jalan. */
+    private fun abortRecorders() {
+        recording = false
+        for (sess in wavSessions) {
+            try { sess.record.stop() } catch (_: Exception) {}
+            try { sess.record.release() } catch (_: Exception) {}
+            try { sess.out.close() } catch (_: Exception) {}
+            try { sess.file.delete() } catch (_: Exception) {}
+        }
+        wavSessions.clear()
+        for (x in extraFiles) { try { x.delete() } catch (_: Exception) {} }
+        extraFiles.clear()
+        try { mediaRecorder?.release() } catch (_: Exception) {}
+        mediaRecorder = null
+        try { virtualDisplay?.release() } catch (_: Exception) {}
+        virtualDisplay = null
+        try { mediaProjection?.stop() } catch (_: Exception) {}
+        mediaProjection = null
     }
 
     private fun stopAll() {
         stoppedDurMs = if (startTimeMs > 0) System.currentTimeMillis() - startTimeMs else 0L
         recording = false
-        try { wavThread?.join(500) } catch (_: Exception) {}
-        wavThread = null
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
-        audioRecord = null
-        try { wavOut?.close() } catch (_: Exception) {}
-        wavOut = null
-        wavFile?.let { try { WavWriter.finalize(it) } catch (_: Exception) {} }
+        for (sess in wavSessions) {
+            try { sess.thread?.join(500) } catch (_: Exception) {}
+            try { sess.record.stop() } catch (_: Exception) {}
+            try { sess.record.release() } catch (_: Exception) {}
+            try { sess.out.close() } catch (_: Exception) {}
+            try { WavWriter.finalize(sess.file) } catch (_: Exception) {}
+        }
+        wavSessions.clear()
         try { mediaRecorder?.stop() } catch (_: Exception) {}
         try { mediaRecorder?.reset() } catch (_: Exception) {}
         try { mediaRecorder?.release() } catch (_: Exception) {}
@@ -520,8 +484,25 @@ class RecordingService : Service() {
             Log.e(TAG, "publish", e)
             finalPath = outputPath + " (gagal pindah publik: ${e.message})"
         }
+        // File tambahan (WAV audio internal) → terbitkan terpisah ke Musik
+        val extraPaths = ArrayList<String>()
+        for (x in extraFiles) {
+            try {
+                if (x.exists() && x.length() > 44) {
+                    extraPaths.add(PublicStorage.publishFileEx(this, x, false, "audio/wav").displayPath)
+                } else {
+                    x.delete()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "publish extra", e)
+            }
+        }
+        extraFiles.clear()
+        val extraNote = if (extraPaths.isEmpty()) "" else
+            "Audio internal disimpan sebagai file terpisah:\n" + extraPaths.joinToString("\n")
+
         isRunning = false
-        sendStatus("Rekaman selesai", finalPath, finalUri)
+        sendStatus("Rekaman selesai", finalPath, finalUri, extraNote)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
