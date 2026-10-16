@@ -1,6 +1,7 @@
 package com.kausar.scream
 
 import android.app.*
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -33,6 +34,8 @@ class RecordingService : Service() {
         const val ACTION_START = "com.kausar.scream.START"
         const val ACTION_STOP = "com.kausar.scream.STOP"
         const val ACTION_BOOKMARK = "com.kausar.scream.BOOKMARK"
+        const val ACTION_PAUSE = "com.kausar.scream.PAUSE"
+        const val ACTION_RESUME = "com.kausar.scream.RESUME"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_IS_SCREEN = "is_screen"
@@ -87,6 +90,8 @@ class RecordingService : Service() {
     private val wavSessions = ArrayList<WavSession>()
     private val extraFiles = ArrayList<File>()
     private var recording = false
+    @Volatile private var paused = false
+    private var hasProjectionFlag = false
     private var outputPath: String = ""
     private var startTimeMs: Long = 0L
     private var wantMp3: Boolean = false
@@ -175,7 +180,28 @@ class RecordingService : Service() {
                 if (recording && startTimeMs > 0) {
                     val pos = System.currentTimeMillis() - startTimeMs
                     bookmarks.add(pos)
-                    sendStatus("Bookmark ditambahkan di ${pos / 1000} detik", outputPath)
+                    val msg = getString(R.string.bookmark_added, (pos / 1000).toInt())
+                    sendStatus(msg, outputPath)
+                }
+            }
+            ACTION_PAUSE -> {
+                if (recording && !paused) {
+                    paused = true
+                    try {
+                        if (Build.VERSION.SDK_INT >= 24) mediaRecorder?.pause()
+                    } catch (_: Exception) {}
+                    updateNotification(true)
+                    sendStatus(getString(R.string.status_paused), outputPath)
+                }
+            }
+            ACTION_RESUME -> {
+                if (recording && paused) {
+                    paused = false
+                    try {
+                        if (Build.VERSION.SDK_INT >= 24) mediaRecorder?.resume()
+                    } catch (_: Exception) {}
+                    updateNotification(false)
+                    sendStatus(getString(R.string.status_recording), outputPath)
                 }
             }
         }
@@ -183,19 +209,14 @@ class RecordingService : Service() {
     }
 
     private fun startForegroundNotification(hasProjection: Boolean) {
+        hasProjectionFlag = hasProjection
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = getSystemService(NotificationManager::class.java)
-            val ch = NotificationChannel(CH_ID, "Rekaman", NotificationManager.IMPORTANCE_LOW)
+            val ch = NotificationChannel(CH_ID, LanguageManager.wrap(this).getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW)
             nm.createNotificationChannel(ch)
         }
-        val notif = Notification.Builder(this, CH_ID)
-            .setContentTitle("Sedang merekam")
-            .setContentText("Ketuk notifikasi di app untuk berhenti")
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .build()
+        val notif = buildNotification(false)
         if (Build.VERSION.SDK_INT >= 34 && !hasProjection) {
-            // Android 14+: tipe mediaProjection hanya boleh dipakai setelah izin rekam layar diberikan.
-            // Rekam mikrofon saja (termasuk "lanjutkan rekaman") cukup memakai tipe microphone.
             startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else if (Build.VERSION.SDK_INT >= 29) {
             startForeground(
@@ -206,6 +227,48 @@ class RecordingService : Service() {
         } else {
             startForeground(NOTIF_ID, notif)
         }
+    }
+
+    private fun buildNotification(isPaused: Boolean): Notification {
+        val ctx = LanguageManager.wrap(this)
+        val open = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+        val pauseResumeAction = if (isPaused) ACTION_RESUME else ACTION_PAUSE
+        val pauseResumeLabel = if (isPaused) ctx.getString(R.string.notif_resume) else ctx.getString(R.string.notif_pause)
+        val pauseResumePi = PendingIntent.getService(
+            this, 1,
+            Intent(this, RecordingService::class.java).setAction(pauseResumeAction),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+        val stopPi = PendingIntent.getService(
+            this, 2,
+            Intent(this, RecordingService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+        val title = if (isPaused) ctx.getString(R.string.notif_title_paused) else ctx.getString(R.string.notif_title)
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, CH_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        builder
+            .setContentTitle(title)
+            .setContentText(ctx.getString(R.string.notif_text))
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(open)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, pauseResumeLabel, pauseResumePi)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, ctx.getString(R.string.notif_stop), stopPi)
+        return builder.build()
+    }
+
+    private fun updateNotification(isPaused: Boolean) {
+        val nm = getSystemService(NotificationManager::class.java) ?: return
+        nm.notify(NOTIF_ID, buildNotification(isPaused))
     }
 
     private fun metrics(): DisplayMetrics {
@@ -344,6 +407,7 @@ class RecordingService : Service() {
                 while (recording && !Thread.interrupted()) {
                     val n = ar.read(buf, 0, buf.size)
                     if (n <= 0) continue
+                    if (paused) continue
                     var writeBuf = buf
                     var writeLen = n
 
