@@ -159,8 +159,16 @@ class RecordingService : Service() {
                 startForegroundNotification(data != null)
                 if (data != null) {
                     val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                    mediaProjection = mgr.getMediaProjection(code, data)
-                    mediaProjection?.registerCallback(projectionCallback, mainHandler)
+                    try {
+                        mediaProjection = mgr.getMediaProjection(code, data)
+                    } catch (e: Exception) {
+                        throw IllegalStateException("MediaProjection gagal: ${e.message}", e)
+                    }
+                    if (Build.VERSION.SDK_INT >= 34) {
+                        try {
+                            mediaProjection?.registerCallback(projectionCallback, mainHandler)
+                        } catch (_: Exception) {}
+                    }
                 }
                 try {
                     if (cfg.isScreen) startScreen(cfg) else startAudio(cfg)
@@ -296,81 +304,99 @@ class RecordingService : Service() {
         if (vw > dm.widthPixels) vw = dm.widthPixels / 2 * 2
         if (vh > dm.heightPixels) vh = dm.heightPixels / 2 * 2
 
+        // Mode layar: SELALU satu file MP4 (video + audio mic menyatu). Tidak ada file audio terpisah.
         val needVideo = cfg.mode != RecorderConfig.SCREEN_INTERNAL_ONLY
-        val needMic = cfg.mode == RecorderConfig.SCREEN_MIC
-        val needInternal = cfg.mode == RecorderConfig.SCREEN_INTERNAL ||
-            cfg.mode == RecorderConfig.SCREEN_INTERNAL_ONLY
 
-        if (needInternal && Build.VERSION.SDK_INT < 29) {
-            throw IllegalStateException("Audio internal butuh Android 10+")
-        }
-        if ((needVideo || needInternal) && mediaProjection == null) {
+        if (mediaProjection == null) {
             throw IllegalStateException("Izin rekam layar belum diberikan")
         }
 
         if (!needVideo) {
+            // Hanya audio internal, tanpa video
+            if (Build.VERSION.SDK_INT < 29) {
+                throw IllegalStateException("Audio internal butuh Android 10+")
+            }
             startInternalAudioOnly(cfg)
             return
         }
 
+        extraFiles.clear()
         outputPath = File(outDir("video"), "screen_${System.currentTimeMillis()}.mp4").absolutePath
 
         @Suppress("DEPRECATION")
         val mr = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
         mediaRecorder = mr
 
-        try {
-            // Urutan wajib: source dulu, baru output format, lalu encoder
-            mr.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            if (needMic) {
-                mr.setAudioSource(MediaRecorder.AudioSource.MIC)
-            }
+        // Coba beberapa resolusi bila perangkat menolak ukuran awal
+        val candidates = listOf(
+            vw to vh,
+            (vw / 2 * 2).coerceAtLeast(640) to (vh / 2 * 2).coerceAtLeast(360),
+            1280 to 720,
+            854 to 480,
+            640 to 360
+        ).distinct()
 
-            mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            mr.setOutputFile(outputPath)
-
-            mr.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            mr.setVideoSize(vw, vh)
-            mr.setVideoFrameRate(30)
-            mr.setVideoEncodingBitRate(cfg.videoBitrate().coerceAtMost(4_000_000))
-
-            if (needMic) {
-                mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                mr.setAudioEncodingBitRate(cfg.audioBitrate())
-                mr.setAudioSamplingRate(cfg.sampleRate.coerceAtMost(48000))
-                mr.setAudioChannels(if (forceStereo) 2 else 1)
-            }
-
-            // Beberapa perangkat membutuhkan orientation hint
+        var lastErr: Exception? = null
+        for ((tryW, tryH) in candidates) {
+            var w = if (tryW % 2 != 0) tryW + 1 else tryW
+            var h = if (tryH % 2 != 0) tryH + 1 else tryH
             try {
-                mr.setOrientationHint(0)
-            } catch (_: Exception) {}
-
-            mr.prepare()
-
-            val surface = mr.surface
-                ?: throw IllegalStateException("Surface MediaRecorder null setelah prepare")
-
-            virtualDisplay = mediaProjection!!.createVirtualDisplay(
-                "KausarScreen",
-                vw, vh, dm.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                surface, null, null
-            )
-
-            if (needInternal) {
-                val iw = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
-                startInternalWav(cfg, iw)
-                extraFiles.add(iw)
+                try { mr.reset() } catch (_: Exception) {}
+                // Satu file MP4: video layar + audio mikrofon menyatu
+                mr.setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                mr.setAudioSource(MediaRecorder.AudioSource.MIC)
+                mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                mr.setOutputFile(outputPath)
+                mr.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                mr.setVideoSize(w, h)
+                mr.setVideoFrameRate(30)
+                mr.setVideoEncodingBitRate(
+                    when {
+                        h >= 1080 -> 3_500_000
+                        h >= 720 -> 2_000_000
+                        else -> 1_200_000
+                    }
+                )
+                mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                mr.setAudioEncodingBitRate(cfg.audioBitrate().coerceAtLeast(64_000))
+                mr.setAudioSamplingRate(44100)
+                mr.setAudioChannels(1)
+                try { mr.setOrientationHint(0) } catch (_: Exception) {}
+                mr.prepare()
+                val surface = mr.surface
+                    ?: throw IllegalStateException("Surface MediaRecorder null setelah prepare")
+                virtualDisplay = try {
+                    mediaProjection!!.createVirtualDisplay(
+                        "KausarScreen", w, h, dm.densityDpi,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        surface, null, null
+                    )
+                } catch (_: Exception) {
+                    mediaProjection!!.createVirtualDisplay(
+                        "KausarScreen", w, h, dm.densityDpi,
+                        0, surface, null, null
+                    )
+                }
+                if (virtualDisplay == null) {
+                    throw IllegalStateException("VirtualDisplay null")
+                }
+                // Tidak menambah file audio terpisah
+                mr.start()
+                recording = true
+                lastErr = null
+                break
+            } catch (e: Exception) {
+                lastErr = e
+                Log.e(TAG, "screen try ${w}x${h} failed", e)
+                try { virtualDisplay?.release() } catch (_: Exception) {}
+                virtualDisplay = null
+                try { mr.reset() } catch (_: Exception) {}
             }
-
-            mr.start()
-            recording = true
-        } catch (e: Exception) {
-            try { mr.reset() } catch (_: Exception) {}
+        }
+        if (lastErr != null || !recording) {
             try { mr.release() } catch (_: Exception) {}
             mediaRecorder = null
-            throw IllegalStateException("Gagal memulai rekam layar: ${e.message}", e)
+            throw IllegalStateException("Gagal memulai rekam layar: ${lastErr?.message}", lastErr)
         }
     }
 
@@ -556,7 +582,6 @@ class RecordingService : Service() {
 
         when {
             needInternal && !needMic -> {
-                // internal saja
                 val f = File(outDir("audio"), "audio_${System.currentTimeMillis()}.wav")
                 startInternalWav(cfg, f)
                 outputPath = f.absolutePath
@@ -565,14 +590,190 @@ class RecordingService : Service() {
                 startMicFile(cfg)
             }
             else -> {
-                // internal + mikrofon: dua file terpisah (mikrofon = utama, internal = tambahan)
-                startMicFile(cfg)
-                val f = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
-                startInternalWav(cfg, f)
-                extraFiles.add(f)
+                // internal + mikrofon: SATU file gabungan (mix), bukan dua file terpisah
+                startMixedMicInternal(cfg)
             }
         }
         recording = true
+    }
+
+    /** Rekam mic + internal ke satu file WAV stereo/mono dengan mix. */
+    private fun startMixedMicInternal(cfg: RecorderConfig) {
+        if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("Audio internal: Android 10+")
+        val proj = mediaProjection ?: throw IllegalStateException("MediaProjection null")
+        val rate = cfg.sampleRate
+        val outChannels = if (forceStereo || effectMode != EFFECT_STUDIO) 2 else 1
+        val f = File(outDir("audio"), "mix_${System.currentTimeMillis()}.wav")
+        outputPath = f.absolutePath
+
+        // Mic
+        val micCfg = AudioFormat.CHANNEL_IN_MONO
+        val micBuf = AudioRecord.getMinBufferSize(rate, micCfg, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(rate) * 2
+        val micAr = try {
+            AudioRecord(MediaRecorder.AudioSource.MIC, rate, micCfg, AudioFormat.ENCODING_PCM_16BIT, micBuf)
+        } catch (_: Exception) {
+            throw IllegalStateException("Mic gagal init")
+        }
+        if (micAr.state != AudioRecord.STATE_INITIALIZED) {
+            micAr.release()
+            throw IllegalStateException("Mic AudioRecord gagal")
+        }
+
+        // Internal playback capture
+        val intCfg = AudioFormat.CHANNEL_IN_STEREO
+        val intBuf = AudioRecord.getMinBufferSize(rate, intCfg, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(rate) * 2
+        val playbackCfg = AudioPlaybackCaptureConfiguration.Builder(proj)
+            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .build()
+        val intAr = AudioRecord.Builder()
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(rate)
+                    .setChannelMask(intCfg)
+                    .build()
+            )
+            .setBufferSizeInBytes(intBuf)
+            .setAudioPlaybackCaptureConfig(playbackCfg)
+            .build()
+        if (intAr.state != AudioRecord.STATE_INITIALIZED) {
+            micAr.release()
+            intAr.release()
+            throw IllegalStateException("Internal AudioRecord gagal init")
+        }
+
+        val out = FileOutputStream(f)
+        WavWriter.writeHeader(out, rate, outChannels)
+        val sess = WavSession(micAr, f, out) // track mic for cleanup; release intAr in thread end
+        wavSessions.add(sess)
+        // Also track internal for cleanup via extra list of records - store on sess thread
+        recording = true
+        try { micAr.startRecording() } catch (e: Exception) {
+            micAr.release(); intAr.release(); out.close()
+            throw e
+        }
+        try { intAr.startRecording() } catch (e: Exception) {
+            try { micAr.stop() } catch (_: Exception) {}
+            micAr.release(); intAr.release(); out.close()
+            throw e
+        }
+
+        val delayLen = (rate * 0.25).toInt().coerceAtLeast(256)
+        val delayBuf = ShortArray(delayLen)
+        var delayPos = 0
+        var flangePhase = 0.0
+        var agcGain = 1.0f
+
+        sess.thread = Thread {
+            val micRaw = ByteArray(micBuf)
+            val intRaw = ByteArray(intBuf)
+            try {
+                while (recording && !Thread.interrupted()) {
+                    if (paused) {
+                        try { Thread.sleep(20) } catch (_: Exception) {}
+                        continue
+                    }
+                    val nm = micAr.read(micRaw, 0, micRaw.size)
+                    val ni = intAr.read(intRaw, 0, intRaw.size)
+                    if (nm <= 0 && ni <= 0) continue
+
+                    val micSamples = if (nm > 0) {
+                        ShortArray(nm / 2).also {
+                            java.nio.ByteBuffer.wrap(micRaw, 0, nm).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it)
+                        }
+                    } else ShortArray(0)
+                    val intSamples = if (ni > 0) {
+                        ShortArray(ni / 2).also {
+                            java.nio.ByteBuffer.wrap(intRaw, 0, ni).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it)
+                        }
+                    } else ShortArray(0)
+
+                    // internal stereo -> mono average for mix base
+                    val intMono = if (intSamples.isEmpty()) ShortArray(micSamples.size)
+                    else {
+                        val frames = intSamples.size / 2
+                        ShortArray(frames.coerceAtLeast(1)) { i ->
+                            val L = intSamples.getOrElse(i * 2) { 0 }
+                            val R = intSamples.getOrElse(i * 2 + 1) { L }
+                            ((L.toInt() + R.toInt()) / 2).toShort()
+                        }
+                    }
+                    val n = maxOf(micSamples.size, intMono.size).coerceAtLeast(1)
+                    val mixed = ShortArray(n)
+                    for (i in 0 until n) {
+                        val m = micSamples.getOrElse(i) { 0 }.toInt()
+                        val inn = intMono.getOrElse(i) { 0 }.toInt()
+                        var s = (m * 0.55f + inn * 0.55f)
+                        s *= micGain
+                        if (dynamicGain) {
+                            val a = kotlin.math.abs(s.toInt())
+                            if (a < 2000) agcGain = (agcGain * 1.02f).coerceAtMost(8f)
+                            else if (a > 12000) agcGain = (agcGain * 0.95f).coerceAtLeast(1f)
+                            s *= agcGain
+                        }
+                        if (enableNoise && noiseLevel > 0f) {
+                            noiseSeed = noiseSeed * 1103515245L + 12345L
+                            val raw = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
+                            s += raw * noiseLevel * 0.04f
+                        }
+                        when (effectMode) {
+                            EFFECT_FLANGER -> {
+                                flangePhase += 0.0008
+                                val fd = (8 + 6 * kotlin.math.sin(flangePhase)).toInt().coerceIn(1, delayLen - 1)
+                                val di = (delayPos - fd + delayLen) % delayLen
+                                s = s * 0.7f + delayBuf[di] * 0.3f
+                            }
+                            EFFECT_ECHO -> {
+                                val ed = (rate * 0.12).toInt().coerceIn(1, delayLen - 1)
+                                val di = (delayPos - ed + delayLen) % delayLen
+                                s = s * 0.75f + delayBuf[di] * 0.55f
+                            }
+                            EFFECT_REVERB -> {
+                                val d1 = (rate * 0.025).toInt().coerceIn(1, delayLen - 1)
+                                val d2 = (rate * 0.045).toInt().coerceIn(1, delayLen - 1)
+                                val d3 = (rate * 0.07).toInt().coerceIn(1, delayLen - 1)
+                                val d4 = (rate * 0.095).toInt().coerceIn(1, delayLen - 1)
+                                s = s * 0.5f +
+                                    delayBuf[(delayPos - d1 + delayLen) % delayLen] * 0.28f +
+                                    delayBuf[(delayPos - d2 + delayLen) % delayLen] * 0.18f +
+                                    delayBuf[(delayPos - d3 + delayLen) % delayLen] * 0.12f +
+                                    delayBuf[(delayPos - d4 + delayLen) % delayLen] * 0.08f
+                            }
+                        }
+                        val outS = s.toInt().coerceIn(-32768, 32767).toShort()
+                        delayBuf[delayPos] = outS
+                        delayPos = (delayPos + 1) % delayLen
+                        mixed[i] = outS
+                    }
+
+                    val writeBuf: ByteArray
+                    val writeLen: Int
+                    if (outChannels == 2) {
+                        val stereo = ShortArray(mixed.size * 2)
+                        for (i in mixed.indices) {
+                            stereo[i * 2] = mixed[i]
+                            val di = (delayPos - 48 + delayLen) % delayLen
+                            stereo[i * 2 + 1] = ((mixed[i] * 0.65f + delayBuf[di] * 0.35f).toInt().coerceIn(-32768, 32767)).toShort()
+                        }
+                        writeBuf = ByteArray(stereo.size * 2)
+                        java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(stereo)
+                        writeLen = writeBuf.size
+                    } else {
+                        writeBuf = ByteArray(mixed.size * 2)
+                        java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(mixed)
+                        writeLen = writeBuf.size
+                    }
+                    synchronized(sess) { out.write(writeBuf, 0, writeLen) }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "mix loop", e)
+            } finally {
+                try { intAr.stop() } catch (_: Exception) {}
+                try { intAr.release() } catch (_: Exception) {}
+            }
+        }.also { it.start() }
     }
 
     private fun startMicFile(cfg: RecorderConfig) {
@@ -581,20 +782,40 @@ class RecordingService : Service() {
             val f = File(outDir("audio"), "mic_${System.currentTimeMillis()}.wav")
             outputPath = f.absolutePath
             val rate = cfg.sampleRate
-            val needFxStereo = forceStereo || effectMode == EFFECT_REVERB || effectMode == EFFECT_ECHO || effectMode == EFFECT_FLANGER
-            val channelConfig = if (needFxStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
-            val outChannels = if (needFxStereo) 2 else 1
-            val minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-            val bufSize = minBuf.coerceAtLeast(rate) * 2
+            val wantFx = forceStereo || effectMode != EFFECT_STUDIO
             val source = if (whisperMode) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC
-            val ar = try {
-                AudioRecord(source, rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT, bufSize)
-            } catch (_: Exception) {
-                AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+
+            // Coba stereo dulu bila perlu FX; fallback mono (banyak HP hanya mono)
+            var outChannels = if (wantFx) 2 else 1
+            var channelConfig = if (wantFx) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+            var minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
+            if (minBuf <= 0) {
+                channelConfig = AudioFormat.CHANNEL_IN_MONO
+                outChannels = if (wantFx) 2 else 1 // tetap bisa upmix ke stereo di loop
+                minBuf = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
             }
-            if (ar.state != AudioRecord.STATE_INITIALIZED) {
-                ar.release()
-                throw IllegalStateException("Mic AudioRecord gagal")
+            val bufSize = (if (minBuf > 0) minBuf else rate * 2).coerceAtLeast(rate) * 2
+
+            var ar: AudioRecord? = null
+            try {
+                ar = AudioRecord(source, rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+                if (ar.state != AudioRecord.STATE_INITIALIZED) {
+                    ar.release()
+                    ar = null
+                }
+            } catch (_: Exception) {
+                try { ar?.release() } catch (_: Exception) {}
+                ar = null
+            }
+            if (ar == null) {
+                channelConfig = AudioFormat.CHANNEL_IN_MONO
+                outChannels = if (wantFx) 2 else 1
+                val mb = AudioRecord.getMinBufferSize(rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(rate) * 2
+                ar = AudioRecord(MediaRecorder.AudioSource.MIC, rate, channelConfig, AudioFormat.ENCODING_PCM_16BIT, mb)
+                if (ar.state != AudioRecord.STATE_INITIALIZED) {
+                    ar.release()
+                    throw IllegalStateException("Mic AudioRecord gagal")
+                }
             }
             startWavSession(ar, f, rate, outChannels, bufSize)
         } else {
@@ -632,7 +853,9 @@ class RecordingService : Service() {
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
         try {
-            mediaProjection?.unregisterCallback(projectionCallback)
+            if (Build.VERSION.SDK_INT >= 34) {
+                try { mediaProjection?.unregisterCallback(projectionCallback) } catch (_: Exception) {}
+            }
             mediaProjection?.stop()
         } catch (_: Exception) {}
         mediaProjection = null
@@ -641,22 +864,34 @@ class RecordingService : Service() {
     private fun stopAll() {
         stoppedDurMs = if (startTimeMs > 0) System.currentTimeMillis() - startTimeMs else 0L
         recording = false
+        // Tunggu minimal ~400ms agar MediaRecorder sempat menulis track
+        val elapsed = if (startTimeMs > 0) System.currentTimeMillis() - startTimeMs else 0L
+        if (elapsed < 400L) {
+            try { Thread.sleep(400L - elapsed) } catch (_: Exception) {}
+        }
         for (sess in wavSessions) {
-            try { sess.thread?.join(500) } catch (_: Exception) {}
+            try { sess.thread?.join(800) } catch (_: Exception) {}
             try { sess.record.stop() } catch (_: Exception) {}
             try { sess.record.release() } catch (_: Exception) {}
             try { sess.out.close() } catch (_: Exception) {}
             try { WavWriter.finalize(sess.file) } catch (_: Exception) {}
         }
         wavSessions.clear()
-        try { mediaRecorder?.stop() } catch (_: Exception) {}
+        // Urutan wajib: stop MediaRecorder dulu, baru lepas VirtualDisplay
+        try {
+            mediaRecorder?.stop()
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "MediaRecorder.stop (mungkin terlalu pendek)", e)
+        } catch (_: Exception) {}
         try { mediaRecorder?.reset() } catch (_: Exception) {}
         try { mediaRecorder?.release() } catch (_: Exception) {}
         mediaRecorder = null
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
         try {
-            mediaProjection?.unregisterCallback(projectionCallback)
+            if (Build.VERSION.SDK_INT >= 34) {
+                try { mediaProjection?.unregisterCallback(projectionCallback) } catch (_: Exception) {}
+            }
             mediaProjection?.stop()
         } catch (_: Exception) {}
         mediaProjection = null
@@ -701,6 +936,10 @@ class RecordingService : Service() {
                 val f = File(outputPath)
                 if (f.exists() && f.length() > 0) {
                     val isVideo = outputPath.endsWith(".mp4", true)
+                    // File video terlalu kecil biasanya corrupt / tanpa track
+                    if (isVideo && f.length() < 8192) {
+                        throw IllegalStateException("File video terlalu kecil / tanpa track")
+                    }
                     val mime = when {
                         isVideo -> "video/mp4"
                         outputPath.endsWith(".wav", true) -> "audio/wav"
@@ -715,11 +954,14 @@ class RecordingService : Service() {
             Log.e(TAG, "publish", e)
             finalPath = outputPath + " (gagal pindah publik: ${e.message})"
         }
-        // File tambahan (WAV audio internal) → terbitkan terpisah ke Musik
+        // Rekaman layar = satu file saja; hapus sisa audio terpisah bila ada
         val extraPaths = ArrayList<String>()
+        val mainIsVideo = finalPath.endsWith(".mp4", true) || outputPath.endsWith(".mp4", true)
         for (x in extraFiles) {
             try {
-                if (x.exists() && x.length() > 44) {
+                if (mainIsVideo) {
+                    x.delete()
+                } else if (x.exists() && x.length() > 44) {
                     extraPaths.add(PublicStorage.publishFileEx(this, x, false, "audio/wav").displayPath)
                 } else {
                     x.delete()
@@ -729,7 +971,7 @@ class RecordingService : Service() {
             }
         }
         extraFiles.clear()
-        var extraNote = if (extraPaths.isEmpty()) "" else
+        var extraNote = if (mainIsVideo || extraPaths.isEmpty()) "" else
             "Audio internal disimpan sebagai file terpisah:\n" + extraPaths.joinToString("\n")
         if (bookmarks.isNotEmpty()) {
             val bmText = bookmarks.joinToString(", ") { "${it / 1000}s" }
