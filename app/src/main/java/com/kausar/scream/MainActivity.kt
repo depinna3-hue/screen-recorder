@@ -30,14 +30,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var spinFormat: Spinner
     private lateinit var spinSample: Spinner
     private lateinit var spinEffect: Spinner
+    private lateinit var spinFilter: Spinner
     private lateinit var seekGain: SeekBar
     private lateinit var seekNoise: SeekBar
     private lateinit var txtGain: TextView
     private lateinit var txtNoise: TextView
-    private lateinit var seekRoom: SeekBar
-    private lateinit var seekEcho: SeekBar
-    private lateinit var txtRoom: TextView
-    private lateinit var txtEcho: TextView
     private lateinit var chkStereo: CheckBox
     private lateinit var chkNoise: CheckBox
     private lateinit var chkSilence: CheckBox
@@ -57,14 +54,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Semua mode rekam (mikrofon, audio internal, rekam layar) memerlukan izin RECORD_AUDIO
-    private val micLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) mulaiRekam()
-        else setStatus(getString(R.string.status_failed) + ": Izin mikrofon ditolak. Aktifkan lewat Pengaturan > Aplikasi > Izin.")
-    }
-
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
@@ -80,7 +69,9 @@ class MainActivity : AppCompatActivity() {
                 val durText = formatDuration(dur)
                 setStatus("${getString(R.string.status_stopped)}\n${getString(R.string.duration)}: $durText" +
                     if (path.isNotEmpty()) "\n${getString(R.string.saved_to)}:\n$path" else "")
-                PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
+                if (!isFinishing && !(android.os.Build.VERSION.SDK_INT >= 17 && isDestroyed)) {
+                    PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
+                }
                 refreshList()
             } else if (msg.contains("Gagal", true) || msg.contains("Failed", true) ||
                 msg.contains(getString(R.string.status_failed), true)
@@ -190,42 +181,15 @@ class MainActivity : AppCompatActivity() {
         ))
         root.addView(spinEffect)
 
-        // Pengaturan efek Reverb: ukuran ruangan (keluasan) 95%, gema 20%
-        root.addView(label("Ukuran ruangan / keluasan (efek Reverb)"))
-        txtRoom = TextView(this).apply {
-            text = "95%"
-            setTextColor(Color.parseColor("#374151"))
-            textSize = 12f
-        }
-        root.addView(txtRoom)
-        seekRoom = SeekBar(this).apply {
-            max = 100
-            progress = 95
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) { txtRoom.text = "$p%" }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {}
-            })
-        }
-        root.addView(seekRoom)
-
-        root.addView(label("Gema (efek Reverb)"))
-        txtEcho = TextView(this).apply {
-            text = "20%"
-            setTextColor(Color.parseColor("#374151"))
-            textSize = 12f
-        }
-        root.addView(txtEcho)
-        seekEcho = SeekBar(this).apply {
-            max = 100
-            progress = 20
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) { txtEcho.text = "$p%" }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {}
-            })
-        }
-        root.addView(seekEcho)
+        root.addView(section(getString(R.string.section_filter)))
+        spinFilter = spinner(arrayOf(
+            getString(R.string.filter_original),
+            getString(R.string.filter_voice),
+            getString(R.string.filter_quiet),
+            getString(R.string.filter_music),
+            getString(R.string.filter_outdoor)
+        ))
+        root.addView(spinFilter)
 
         root.addView(label(getString(R.string.label_mic_gain)))
         txtGain = TextView(this).apply {
@@ -281,20 +245,16 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_stop)
             isEnabled = false
             setOnClickListener {
-                try {
-                    startService(Intent(this@MainActivity, RecordingService::class.java)
-                        .setAction(RecordingService.ACTION_STOP))
-                } catch (_: Exception) {}
+                startService(Intent(this@MainActivity, RecordingService::class.java)
+                    .setAction(RecordingService.ACTION_STOP))
             }
         }
         btnBookmark = Button(this).apply {
             text = getString(R.string.btn_bookmark)
             isEnabled = false
             setOnClickListener {
-                try {
-                    startService(Intent(this@MainActivity, RecordingService::class.java)
-                        .setAction(RecordingService.ACTION_BOOKMARK))
-                } catch (_: Exception) {}
+                startService(Intent(this@MainActivity, RecordingService::class.java)
+                    .setAction(RecordingService.ACTION_BOOKMARK))
             }
         }
         root.addView(btnStart)
@@ -329,13 +289,6 @@ class MainActivity : AppCompatActivity() {
             setStatus(getString(R.string.status_already_running))
             return
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            setStatus("Izin mikrofon diperlukan untuk merekam. Mohon izinkan.")
-            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            return
-        }
         val isScreen = spinRecType.selectedItemPosition == 0
         val micPos = spinMic.selectedItemPosition
         // mic: 0=mic only, 1=internal, 2=internal+mic, 3=screen+mic (legacy label)
@@ -349,18 +302,15 @@ class MainActivity : AppCompatActivity() {
             setStatus(getString(R.string.status_need_projection))
             projectionLauncher.launch(mgr.createScreenCaptureIntent())
         } else {
-            launchService(0, null, false)
+            launchService(0, Intent(), false)
         }
     }
 
-    private fun launchService(code: Int, data: Intent?, isScreen: Boolean) {
+    private fun launchService(code: Int, data: Intent, isScreen: Boolean) {
         val micPos = spinMic.selectedItemPosition
         val cfgMode = when {
-            isScreen -> when (micPos) {
-                1 -> RecorderConfig.SCREEN_INTERNAL
-                2 -> RecorderConfig.SCREEN_INTERNAL // internal+mic approximated
-                else -> RecorderConfig.SCREEN_MIC
-            }
+            // Rekaman layar: selalu satu file MP4 (video + audio menyatu)
+            isScreen -> RecorderConfig.SCREEN_MIC
             else -> when (micPos) {
                 1 -> RecorderConfig.AUDIO_INTERNAL
                 2 -> RecorderConfig.AUDIO_INTERNAL_MIC
@@ -370,12 +320,8 @@ class MainActivity : AppCompatActivity() {
         val fmt = if (spinFormat.selectedItemPosition == 1) RecorderConfig.FMT_WAV else RecorderConfig.FMT_AAC
         val i = Intent(this, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
-            // Hanya kirim token MediaProjection yang valid. Intent kosong membuat service
-            // mengira ada proyeksi layar dan crash di Android 14+ (mode mikrofon saja).
-            if (code == RESULT_OK && data != null) {
-                putExtra(RecordingService.EXTRA_RESULT_CODE, code)
-                putExtra(RecordingService.EXTRA_RESULT_DATA, data)
-            }
+            putExtra(RecordingService.EXTRA_RESULT_CODE, code)
+            putExtra(RecordingService.EXTRA_RESULT_DATA, data)
             putExtra(RecordingService.EXTRA_IS_SCREEN, isScreen)
             putExtra(RecordingService.EXTRA_MODE, cfgMode)
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleVals[spinSample.selectedItemPosition])
@@ -390,16 +336,9 @@ class MainActivity : AppCompatActivity() {
             putExtra(RecordingService.EXTRA_MIC_GAIN, seekGain.progress / 100f)
             putExtra(RecordingService.EXTRA_NOISE_LEVEL, seekNoise.progress / 100f)
             putExtra(RecordingService.EXTRA_EFFECT, spinEffect.selectedItemPosition)
-            putExtra(RecordingService.EXTRA_ROOM_SIZE, seekRoom.progress / 100f)
-            putExtra(RecordingService.EXTRA_ECHO_LEVEL, seekEcho.progress / 100f)
+            putExtra(RecordingService.EXTRA_FILTER_MODE, spinFilter.selectedItemPosition)
         }
-        try {
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
-        } catch (e: Exception) {
-            setRecordingUi(false)
-            setStatus(getString(R.string.status_failed) + ": " + (e.message ?: e.javaClass.simpleName))
-            return
-        }
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
         setRecordingUi(true)
         setStatus(getString(R.string.status_recording))
     }
@@ -413,10 +352,9 @@ class MainActivity : AppCompatActivity() {
         spinFormat.isEnabled = !running
         spinSample.isEnabled = !running
         spinEffect.isEnabled = !running
+        spinFilter.isEnabled = !running
         seekGain.isEnabled = !running
         seekNoise.isEnabled = !running
-        seekRoom.isEnabled = !running
-        seekEcho.isEnabled = !running
         chkStereo.isEnabled = !running
         chkNoise.isEnabled = !running
         chkSilence.isEnabled = !running
@@ -492,16 +430,12 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) need.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        // Satu permintaan saja: dua requestPermissions bersamaan saling membatalkan sehingga
-        // izin mikrofon bisa terlewat (rekaman gagal/crash).
-        RequestPermission.tandaiSudahDiminta()
         if (need.isNotEmpty()) ActivityCompat.requestPermissions(this, need.toTypedArray(), 991)
+        RequestPermission.minta(this)
     }
 
     override fun onStart() {
         super.onStart()
-        // Siaran "selesai" bisa terlewat saat app di background; samakan UI dengan keadaan service
-        if (::btnStart.isInitialized && !RecordingService.isRunning) setRecordingUi(false)
         val f = IntentFilter(RecordingService.BROADCAST_STATUS)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, f, RECEIVER_NOT_EXPORTED)
         else registerReceiver(statusReceiver, f)
