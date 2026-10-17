@@ -71,7 +71,14 @@ object LanguageManager {
         val saved = prefs.getString(KEY, null)
         if (!saved.isNullOrEmpty()) return saved
         // Ikuti bahasa perangkat jika belum dipilih
-        val sys = java.util.Locale.getDefault().language
+        // (Android baru memakai kode "id"/"nb"/"iw"/"tl", sedangkan daftar ini memakai "in"/"no"/"he"/"fil")
+        val sys = when (val l = java.util.Locale.getDefault().language) {
+            "id" -> "in"
+            "nb", "nn" -> "no"
+            "iw" -> "he"
+            "tl" -> "fil"
+            else -> l
+        }
         return if (LANGUAGES.any { it.code == sys }) sys else "en"
     }
 
@@ -96,5 +103,6 @@ object LanguageManager {
         }
     }
 
-    fun wrap(ctx: Context): Context = applyLocale(ctx)
+    /** Tidak boleh melempar: dipakai di service/notifikasi saat merekam. */
+    fun wrap(ctx: Context): Context = try { applyLocale(ctx) } catch (_: Exception) { ctx }
 }
