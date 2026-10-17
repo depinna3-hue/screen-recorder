@@ -1,8 +1,10 @@
 package com.kausar.scream
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.*
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.media.projection.MediaProjectionManager
@@ -14,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 
 class ScreenRecordFragment : Fragment() {
@@ -46,8 +49,17 @@ class ScreenRecordFragment : Fragment() {
         }
     }
 
+    // Semua mode rekam layar (mikrofon maupun audio internal) memerlukan izin RECORD_AUDIO
+    private val micPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) mulaiRekam()
+        else status.text = "Izin mikrofon ditolak. Aktifkan lewat Pengaturan > Aplikasi > Izin."
+    }
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
+            val ctx = context ?: return
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
             // Hanya tanggapi rekaman layar dari tab ini (abaikan siaran suara / lanjutkan rekaman)
             val src = i.getStringExtra(RecordingService.EXTRA_SOURCE) ?: RecordingService.SOURCE_SCREEN
@@ -64,7 +76,7 @@ class ScreenRecordFragment : Fragment() {
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan:\n$path" else ""
                 // Tampilkan pemutar agar hasil rekaman bisa langsung ditonton
-                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText, note)
+                PlayerDialog.showAfterRecording(ctx, uri, path, durText, note)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
@@ -122,7 +134,7 @@ class ScreenRecordFragment : Fragment() {
             isEnabled = false
             setOnClickListener {
                 val i = Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_STOP)
-                ctx.startService(i)
+                try { ctx.startService(i) } catch (_: Exception) {}
             }
         }
         root.addView(btnStart)
@@ -140,6 +152,11 @@ class ScreenRecordFragment : Fragment() {
 
     override fun onStart() {
         super.onStart()
+        if (!RecordingService.isRunning) {
+            btnStart.isEnabled = true
+            btnStop.isEnabled = false
+            setSpinnersEnabled(true)
+        }
         val f = IntentFilter(RecordingService.BROADCAST_STATUS)
         if (Build.VERSION.SDK_INT >= 33) {
             requireContext().registerReceiver(statusReceiver, f, Context.RECEIVER_NOT_EXPORTED)
@@ -156,6 +173,13 @@ class ScreenRecordFragment : Fragment() {
     private fun mulaiRekam() {
         if (RecordingService.isRunning) {
             status.text = "Masih ada rekaman yang berjalan. Hentikan dulu sebelum memulai yang baru."
+            return
+        }
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            status.text = "Izin mikrofon diperlukan untuk merekam. Mohon izinkan."
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
         if (spinMode.selectedItemPosition != RecorderConfig.SCREEN_MIC && Build.VERSION.SDK_INT < 29) {
@@ -180,7 +204,12 @@ class ScreenRecordFragment : Fragment() {
             putExtra(RecordingService.EXTRA_VIDEO_QUALITY, spinVideo.selectedItemPosition)
             putExtra(RecordingService.EXTRA_AUDIO_FORMAT, RecorderConfig.FMT_AAC)
         }
-        if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
+        try {
+            if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
+        } catch (e: Exception) {
+            status.text = "Gagal memulai rekaman: ${e.message ?: e.javaClass.simpleName}"
+            return
+        }
         btnStart.isEnabled = false
         btnStop.isEnabled = true
         setSpinnersEnabled(false)
