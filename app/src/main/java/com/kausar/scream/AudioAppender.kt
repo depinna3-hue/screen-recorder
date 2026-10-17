@@ -142,31 +142,21 @@ object AudioAppender {
             val ch = os.channel
             ch.position(ch.size())
 
-            // baca header segmen: kanal & sample rate harus cocok dengan file lama
-            val segInfo = FileInputStream(segment).use { readWavInfo(it.channel) }
-            if (segInfo.sampleRate != info.sampleRate) {
-                throw IllegalStateException("Sample rate rekaman baru (${segInfo.sampleRate} Hz) berbeda dengan file lama (${info.sampleRate} Hz)")
-            }
-            val segCh = segInfo.channels
-
             FileInputStream(segment).use { ins ->
-                // lewati header milik segmen (dibuat WavWriter)
-                skipFully(ins, segInfo.dataOffset.toInt())
-                val frameBytes = 2 * segCh
-                val buf = ByteArray(64 * 1024 / frameBytes * frameBytes)
+                // lewati header 44 byte milik segmen (dibuat WavWriter)
+                skipFully(ins, 44)
+                val buf = ByteArray(64 * 1024)
                 while (true) {
                     val n = fill(ins, buf)
                     if (n <= 0) break
-                    val whole = n - (n % frameBytes)    // buang byte sisa (1 frame = 2 byte x kanal)
-                    if (whole <= 0) break
-                    if (info.channels == segCh) {
-                        writeFully(ch, ByteBuffer.wrap(buf, 0, whole))
-                    } else if (info.channels == 2 && segCh == 1) {
+                    val even = n and 1.inv()            // buang byte sisa (sampel 16-bit = 2 byte)
+                    if (even <= 0) break
+                    if (info.channels == 2) {
                         // segmen mono → stereo: gandakan tiap sampel
-                        val outBuf = ByteArray(whole * 2)
+                        val outBuf = ByteArray(even * 2)
                         var s = 0
                         var d = 0
-                        while (s < whole) {
+                        while (s < even) {
                             outBuf[d] = buf[s]
                             outBuf[d + 1] = buf[s + 1]
                             outBuf[d + 2] = buf[s]
@@ -176,20 +166,7 @@ object AudioAppender {
                         }
                         writeFully(ch, ByteBuffer.wrap(outBuf, 0, outBuf.size))
                     } else {
-                        // segmen stereo → mono: rata-ratakan L dan R
-                        val outBuf = ByteArray(whole / 2)
-                        var s = 0
-                        var d = 0
-                        while (s < whole) {
-                            val l = (buf[s].toInt() and 0xFF) or (buf[s + 1].toInt() shl 8)
-                            val r = (buf[s + 2].toInt() and 0xFF) or (buf[s + 3].toInt() shl 8)
-                            val m = (l + r) / 2
-                            outBuf[d] = (m and 0xFF).toByte()
-                            outBuf[d + 1] = ((m shr 8) and 0xFF).toByte()
-                            s += 4
-                            d += 2
-                        }
-                        writeFully(ch, ByteBuffer.wrap(outBuf, 0, outBuf.size))
+                        writeFully(ch, ByteBuffer.wrap(buf, 0, even))
                     }
                 }
             }
