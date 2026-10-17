@@ -19,9 +19,7 @@ public class App extends Application {
             @Override public void onActivityStarted(Activity a) { current = a; }
             @Override public void onActivityResumed(Activity a) {
                 current = a;
-                try {
-                    if (!a.isFinishing()) RequestPermission.minta(a);
-                } catch (Throwable ignored) {}
+                try { RequestPermission.minta(a); } catch (Exception ignored) {}
                 try {
                     Class<?> c = Class.forName("com.kausar.scream.UpdateChecker");
                     c.getMethod("tryInstallPending", android.content.Context.class).invoke(null, a);
