@@ -113,6 +113,7 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
     private var effectMode = 0
     private var filterMode = FilterMode.ORIGINAL
     private var systemFx: SystemAudioEffects? = null
+    private var audioEffectCtrl: AudioEffectController? = null
     private val bookmarks = ArrayList<Long>()
     private var noiseSeed = 12345L
     private val projectionCallback = object : MediaProjection.Callback() {
@@ -176,11 +177,21 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
         } catch (e: Exception) {
             Log.e(TAG, "systemFx", e)
         }
+        try {
+            audioEffectCtrl?.release()
+            audioEffectCtrl = AudioEffectController(ar.audioSessionId).also {
+                it.applyForModes(filterMode, effectMode)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "audioEffectCtrl", e)
+        }
     }
 
     private fun releaseSystemFx() {
         try { systemFx?.releaseEffects() } catch (_: Exception) {}
         systemFx = null
+        try { audioEffectCtrl?.release() } catch (_: Exception) {}
+        audioEffectCtrl = null
     }
 
     private fun releaseWakeLock() {
@@ -637,6 +648,10 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .addMatchingUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .addMatchingUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .addMatchingUsage(AudioAttributes.USAGE_ALARM)
+            .addMatchingUsage(AudioAttributes.USAGE_NOTIFICATION)
             .build()
 
         val ar = AudioRecord.Builder()
@@ -688,75 +703,90 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
     }
 
     /** Rekam mic + internal ke satu file WAV stereo/mono dengan mix. */
+
     private fun startMixedMicInternal(cfg: RecorderConfig) {
         if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("Audio internal: Android 10+")
         val proj = mediaProjection ?: throw IllegalStateException("MediaProjection null")
-        val rate = cfg.sampleRate
+        val rate = cfg.sampleRate.coerceIn(16000, 48000)
         val outChannels = if (forceStereo || effectMode != EFFECT_STUDIO) 2 else 1
         val f = File(outDir("audio"), "mix_${System.currentTimeMillis()}.wav")
         outputPath = f.absolutePath
 
-        // Mic
-        val micCfg = AudioFormat.CHANNEL_IN_MONO
-        val micBuf = AudioRecord.getMinBufferSize(rate, micCfg, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(rate) * 2
-        val micAr = try {
-            AudioRecord(MediaRecorder.AudioSource.MIC, rate, micCfg, AudioFormat.ENCODING_PCM_16BIT, micBuf)
-        } catch (_: Exception) {
-            throw IllegalStateException("Mic gagal init")
-        }
-        if (micAr.state != AudioRecord.STATE_INITIALIZED) {
-            micAr.release()
-            throw IllegalStateException("Mic AudioRecord gagal")
-        }
-
-        // Internal playback capture
-        val intCfg = AudioFormat.CHANNEL_IN_STEREO
-        val intBuf = AudioRecord.getMinBufferSize(rate, intCfg, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(rate) * 2
+        // 1) Internal dulu (playback capture) — harus hidup sebelum mic di beberapa OEM
+        val intMask = AudioFormat.CHANNEL_IN_STEREO
+        var intMin = AudioRecord.getMinBufferSize(rate, intMask, AudioFormat.ENCODING_PCM_16BIT)
+        if (intMin <= 0) intMin = rate * 4
+        val intBuf = intMin.coerceAtLeast(rate) * 4
         val playbackCfg = AudioPlaybackCaptureConfiguration.Builder(proj)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .addMatchingUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .addMatchingUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .addMatchingUsage(AudioAttributes.USAGE_ALARM)
+            .addMatchingUsage(AudioAttributes.USAGE_NOTIFICATION)
             .build()
         val intAr = AudioRecord.Builder()
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setSampleRate(rate)
-                    .setChannelMask(intCfg)
+                    .setChannelMask(intMask)
                     .build()
             )
             .setBufferSizeInBytes(intBuf)
             .setAudioPlaybackCaptureConfig(playbackCfg)
             .build()
         if (intAr.state != AudioRecord.STATE_INITIALIZED) {
-            micAr.release()
             intAr.release()
             throw IllegalStateException("Internal AudioRecord gagal init")
         }
 
+        // 2) Mic — selalu MIC murni (jangan VOICE_COMMUNICATION: AEC bisa menekan musik internal)
+        val micMask = AudioFormat.CHANNEL_IN_MONO
+        var micMin = AudioRecord.getMinBufferSize(rate, micMask, AudioFormat.ENCODING_PCM_16BIT)
+        if (micMin <= 0) micMin = rate * 2
+        val micBuf = micMin.coerceAtLeast(rate) * 4
+        val micAr = try {
+            AudioRecord(MediaRecorder.AudioSource.MIC, rate, micMask, AudioFormat.ENCODING_PCM_16BIT, micBuf)
+        } catch (_: Exception) {
+            intAr.release()
+            throw IllegalStateException("Mic gagal init")
+        }
+        if (micAr.state != AudioRecord.STATE_INITIALIZED) {
+            micAr.release()
+            intAr.release()
+            throw IllegalStateException("Mic AudioRecord gagal")
+        }
+
         val out = FileOutputStream(f)
         WavWriter.writeHeader(out, rate, outChannels)
-        val sess = WavSession(micAr, f, out) // track mic for cleanup; release intAr in thread end
+        val sess = WavSession(micAr, f, out)
         wavSessions.add(sess)
-        // Also track internal for cleanup via extra list of records - store on sess thread
         recording = true
-        attachSystemFx(micAr)
-        try { micAr.startRecording() } catch (e: Exception) {
-            releaseSystemFx()
+
+        try {
+            intAr.startRecording()
+        } catch (e: Exception) {
             micAr.release(); intAr.release(); out.close()
-            throw e
+            throw IllegalStateException("Internal startRecording gagal: ${e.message}", e)
         }
-        try { intAr.startRecording() } catch (e: Exception) {
-            try { micAr.stop() } catch (_: Exception) {}
+        try {
+            micAr.startRecording()
+        } catch (e: Exception) {
+            try { intAr.stop() } catch (_: Exception) {}
             micAr.release(); intAr.release(); out.close()
-            throw e
+            throw IllegalStateException("Mic startRecording gagal: ${e.message}", e)
         }
+        // Jangan attach SystemAudioEffects (AEC/NS) di mode mix — bisa mematikan track internal
 
         val delayLen = (rate * 0.25).toInt().coerceAtLeast(256)
         val delayBuf = ShortArray(delayLen)
         var delayPos = 0
         var flangePhase = 0.0
         var agcGain = 1.0f
+        // Buffer terakhir internal (jika baca internal kosong sementara, pakai sisa)
+        var lastIntMono = ShortArray(0)
 
         sess.thread = Thread {
             val micRaw = ByteArray(micBuf)
@@ -767,71 +797,70 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
                         try { Thread.sleep(20) } catch (_: Exception) {}
                         continue
                     }
-                    val nm = micAr.read(micRaw, 0, micRaw.size)
                     val ni = intAr.read(intRaw, 0, intRaw.size)
-                    if (nm <= 0 && ni <= 0) continue
+                    val nm = micAr.read(micRaw, 0, micRaw.size)
+                    if (nm <= 0 && ni <= 0) {
+                        try { Thread.sleep(5) } catch (_: Exception) {}
+                        continue
+                    }
 
-                    val micSamples = if (nm > 0) {
+                    val micSamples = if (nm > 1) {
                         ShortArray(nm / 2).also {
                             java.nio.ByteBuffer.wrap(micRaw, 0, nm).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it)
                         }
                     } else ShortArray(0)
-                    val intSamples = if (ni > 0) {
-                        ShortArray(ni / 2).also {
+
+                    if (ni > 3) {
+                        val intSamples = ShortArray(ni / 2).also {
                             java.nio.ByteBuffer.wrap(intRaw, 0, ni).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it)
                         }
-                    } else ShortArray(0)
-
-                    // internal stereo -> mono average for mix base
-                    val intMono = if (intSamples.isEmpty()) ShortArray(micSamples.size)
-                    else {
+                        // stereo internal → mono
                         val frames = intSamples.size / 2
-                        ShortArray(frames.coerceAtLeast(1)) { i ->
-                            val L = intSamples.getOrElse(i * 2) { 0 }
-                            val R = intSamples.getOrElse(i * 2 + 1) { L }
-                            ((L.toInt() + R.toInt()) / 2).toShort()
+                        if (frames > 0) {
+                            lastIntMono = ShortArray(frames) { i ->
+                                val L = intSamples.getOrElse(i * 2) { 0 }
+                                val R = intSamples.getOrElse(i * 2 + 1) { L }
+                                ((L.toInt() + R.toInt()) / 2).toShort()
+                            }
                         }
                     }
+                    val intMono = lastIntMono
                     val n = maxOf(micSamples.size, intMono.size).coerceAtLeast(1)
                     val mixed = ShortArray(n)
                     for (i in 0 until n) {
-                        val m = micSamples.getOrElse(i) { 0 }.toInt()
-                        val inn = intMono.getOrElse(i) { 0 }.toInt()
-                        var s = (m * 0.55f + inn * 0.55f)
-                        s *= micGain
+                        val m = micSamples.getOrElse(i) { 0 }.toFloat()
+                        val inn = intMono.getOrElse(i) { 0 }.toFloat()
+                        // Internal lebih kuat supaya musik terdengar; mic tetap jelas
+                        var s = m * 0.7f * micGain + inn * 1.0f
                         if (dynamicGain) {
                             val a = kotlin.math.abs(s.toInt())
-                            if (a < 2000) agcGain = (agcGain * 1.02f).coerceAtMost(8f)
-                            else if (a > 12000) agcGain = (agcGain * 0.95f).coerceAtLeast(1f)
+                            if (a < 2000) agcGain = (agcGain * 1.02f).coerceAtMost(6f)
+                            else if (a > 14000) agcGain = (agcGain * 0.95f).coerceAtLeast(1f)
                             s *= agcGain
                         }
                         if (enableNoise && noiseLevel > 0f) {
                             noiseSeed = noiseSeed * 1103515245L + 12345L
                             val raw = ((noiseSeed shr 16) and 0x7FFF).toInt() - 16384
-                            s += raw * noiseLevel * 0.04f
+                            s += raw * noiseLevel * 0.03f
                         }
                         when (effectMode) {
                             EFFECT_FLANGER -> {
                                 flangePhase += 0.0008
                                 val fd = (8 + 6 * kotlin.math.sin(flangePhase)).toInt().coerceIn(1, delayLen - 1)
-                                val di = (delayPos - fd + delayLen) % delayLen
-                                s = s * 0.7f + delayBuf[di] * 0.3f
+                                s = s * 0.7f + delayBuf[(delayPos - fd + delayLen) % delayLen] * 0.3f
                             }
                             EFFECT_ECHO -> {
                                 val ed = (rate * 0.12).toInt().coerceIn(1, delayLen - 1)
-                                val di = (delayPos - ed + delayLen) % delayLen
-                                s = s * 0.75f + delayBuf[di] * 0.55f
+                                s = s * 0.75f + delayBuf[(delayPos - ed + delayLen) % delayLen] * 0.5f
                             }
                             EFFECT_REVERB -> {
                                 val d1 = (rate * 0.025).toInt().coerceIn(1, delayLen - 1)
-                                val d2 = (rate * 0.045).toInt().coerceIn(1, delayLen - 1)
-                                val d3 = (rate * 0.07).toInt().coerceIn(1, delayLen - 1)
-                                val d4 = (rate * 0.095).toInt().coerceIn(1, delayLen - 1)
-                                s = s * 0.5f +
-                                    delayBuf[(delayPos - d1 + delayLen) % delayLen] * 0.28f +
-                                    delayBuf[(delayPos - d2 + delayLen) % delayLen] * 0.18f +
-                                    delayBuf[(delayPos - d3 + delayLen) % delayLen] * 0.12f +
-                                    delayBuf[(delayPos - d4 + delayLen) % delayLen] * 0.08f
+                                val d2 = (rate * 0.05).toInt().coerceIn(1, delayLen - 1)
+                                val d3 = (rate * 0.08).toInt().coerceIn(1, delayLen - 1)
+                                s = s * 0.55f +
+                                    delayBuf[(delayPos - d1 + delayLen) % delayLen] * 0.25f +
+                                    delayBuf[(delayPos - d2 + delayLen) % delayLen] * 0.15f +
+                                    delayBuf[(delayPos - d3 + delayLen) % delayLen] * 0.1f
                             }
                         }
                         val outS = s.toInt().coerceIn(-32768, 32767).toShort()
@@ -846,8 +875,8 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
                         val stereo = ShortArray(mixed.size * 2)
                         for (i in mixed.indices) {
                             stereo[i * 2] = mixed[i]
-                            val di = (delayPos - 48 + delayLen) % delayLen
-                            stereo[i * 2 + 1] = ((mixed[i] * 0.65f + delayBuf[di] * 0.35f).toInt().coerceIn(-32768, 32767)).toShort()
+                            val di = (delayPos - 32 + delayLen) % delayLen
+                            stereo[i * 2 + 1] = ((mixed[i] * 0.7f + delayBuf[di] * 0.3f).toInt().coerceIn(-32768, 32767)).toShort()
                         }
                         writeBuf = ByteArray(stereo.size * 2)
                         java.nio.ByteBuffer.wrap(writeBuf).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(stereo)
@@ -867,6 +896,7 @@ class RecordingService : Service(), MediaRecorder.OnErrorListener {
             }
         }.also { it.start() }
     }
+
 
     private fun startMicFile(cfg: RecorderConfig) {
         val useWav = cfg.audioFormat == RecorderConfig.FMT_WAV || cfg.audioFormat == RecorderConfig.FMT_MP3 || effectMode != EFFECT_STUDIO
