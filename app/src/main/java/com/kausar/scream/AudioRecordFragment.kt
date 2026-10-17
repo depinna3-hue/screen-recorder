@@ -1,9 +1,7 @@
 package com.kausar.scream
 
-import android.Manifest
 import android.app.Activity
 import android.content.*
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.media.projection.MediaProjectionManager
@@ -15,7 +13,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 
 class AudioRecordFragment : Fragment() {
@@ -55,21 +52,8 @@ class AudioRecordFragment : Fragment() {
         }
     }
 
-    // Mikrofon maupun audio internal sama-sama memerlukan izin RECORD_AUDIO
-    private val micPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            mulaiRekam()
-        } else {
-            status.text = "Izin mikrofon ditolak. Aktifkan lewat Pengaturan > Aplikasi > Izin."
-            status.contentDescription = status.text
-        }
-    }
-
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
-            val ctx = context ?: return
             val msg = i?.getStringExtra(RecordingService.EXTRA_STATUS) ?: return
             val src = i.getStringExtra(RecordingService.EXTRA_SOURCE) ?: RecordingService.SOURCE_AUDIO
             if (src != RecordingService.SOURCE_AUDIO) return
@@ -87,7 +71,7 @@ class AudioRecordFragment : Fragment() {
                 status.text = "Rekaman dihentikan.\nDurasi: $durText" +
                     if (path.isNotEmpty()) "\n\nDisimpan di Musik:\n$path" else ""
                 status.contentDescription = status.text
-                PlayerDialog.showAfterRecording(ctx, uri, path, durText, note)
+                PlayerDialog.showAfterRecording(requireContext(), uri, path, durText, note)
             } else if (msg.contains("Gagal", true)) {
                 btnStart.isEnabled = true
                 btnStop.isEnabled = false
@@ -118,7 +102,7 @@ class AudioRecordFragment : Fragment() {
         }
 
         root.addView(title(ctx, "Perekam suara"))
-        root.addView(hint(ctx, "File disimpan ke folder Musik/KausarRecorder.\nFormat: AAC atau WAV. Internal audio = Android 10+.\nInternal + mikrofon digabung jadi satu file WAV. Fitur lanjutan (efek/noise/gain) otomatis memakai WAV."))
+        root.addView(hint(ctx, "File disimpan ke folder Musik/KausarRecorder.\nFormat: AAC atau WAV. Internal audio = Android 10+.\nFitur lanjutan tersedia pada format WAV."))
 
         root.addView(label(ctx, "Sumber audio"))
         spinMode = spinner(ctx, modes)
@@ -165,7 +149,7 @@ class AudioRecordFragment : Fragment() {
             contentDescription = "Tombol hentikan rekaman"
             setOnClickListener {
                 val i = Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_STOP)
-                try { ctx.startService(i) } catch (_: Exception) {}
+                ctx.startService(i)
             }
         }
         btnBookmark = Button(ctx).apply {
@@ -174,7 +158,7 @@ class AudioRecordFragment : Fragment() {
             contentDescription = "Tombol tambah bookmark timestamp saat rekaman berjalan"
             setOnClickListener {
                 val i = Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_BOOKMARK)
-                try { ctx.startService(i) } catch (_: Exception) {}
+                ctx.startService(i)
                 status.text = "Bookmark ditambahkan pada posisi saat ini."
                 status.contentDescription = status.text
             }
@@ -196,12 +180,6 @@ class AudioRecordFragment : Fragment() {
 
     override fun onStart() {
         super.onStart()
-        if (!RecordingService.isRunning) {
-            btnStart.isEnabled = true
-            btnStop.isEnabled = false
-            btnBookmark.isEnabled = false
-            setSpinnersEnabled(true)
-        }
         val f = IntentFilter(RecordingService.BROADCAST_STATUS)
         if (Build.VERSION.SDK_INT >= 33) {
             requireContext().registerReceiver(statusReceiver, f, Context.RECEIVER_NOT_EXPORTED)
@@ -221,14 +199,6 @@ class AudioRecordFragment : Fragment() {
             status.contentDescription = status.text
             return
         }
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            status.text = "Izin mikrofon diperlukan untuk merekam. Mohon izinkan."
-            status.contentDescription = status.text
-            micPermission.launch(Manifest.permission.RECORD_AUDIO)
-            return
-        }
         val mode = spinMode.selectedItemPosition
         val needInternal = mode == RecorderConfig.AUDIO_INTERNAL || mode == RecorderConfig.AUDIO_INTERNAL_MIC
         if (needInternal) {
@@ -242,21 +212,17 @@ class AudioRecordFragment : Fragment() {
             status.contentDescription = status.text
             projectionLauncher.launch(mgr.createScreenCaptureIntent())
         } else {
-            launchService(0, null)
+            launchService(0, Intent())
         }
     }
 
-    private fun launchService(code: Int, data: Intent?) {
+    private fun launchService(code: Int, data: Intent) {
         val ctx = requireContext()
         val fmt = if (spinFormat.selectedItemPosition == 1) RecorderConfig.FMT_WAV else RecorderConfig.FMT_AAC
         val i = Intent(ctx, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
-            // Hanya kirim token MediaProjection yang valid. Intent kosong membuat service
-            // mengira ada proyeksi layar dan crash di Android 14+.
-            if (code == Activity.RESULT_OK && data != null) {
-                putExtra(RecordingService.EXTRA_RESULT_CODE, code)
-                putExtra(RecordingService.EXTRA_RESULT_DATA, data)
-            }
+            putExtra(RecordingService.EXTRA_RESULT_CODE, code)
+            putExtra(RecordingService.EXTRA_RESULT_DATA, data)
             putExtra(RecordingService.EXTRA_IS_SCREEN, false)
             putExtra(RecordingService.EXTRA_MODE, spinMode.selectedItemPosition)
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleVals[spinSample.selectedItemPosition])
@@ -269,13 +235,7 @@ class AudioRecordFragment : Fragment() {
             putExtra(RecordingService.EXTRA_DYNAMIC_GAIN, chkGain.isChecked)
             putExtra(RecordingService.EXTRA_WHISPER, chkWhisper.isChecked)
         }
-        try {
-            if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
-        } catch (e: Exception) {
-            status.text = "Gagal memulai rekaman: ${e.message ?: e.javaClass.simpleName}"
-            status.contentDescription = status.text
-            return
-        }
+        if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
         btnStart.isEnabled = false
         btnStop.isEnabled = true
         btnBookmark.isEnabled = true
