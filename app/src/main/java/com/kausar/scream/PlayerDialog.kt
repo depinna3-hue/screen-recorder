@@ -43,6 +43,25 @@ object PlayerDialog {
         return try { LanguageManager.wrap(ctx) } catch (_: Exception) { ctx }
     }
 
+    /**
+     * Activity yang valid untuk menampung dialog. Dialog TIDAK boleh dibuat dari context hasil
+     * createConfigurationContext (LanguageManager.wrap): jendela tidak punya token sehingga muncul
+     * error "Unable to add window -- token ... is not valid" dan hasil rekaman tidak bisa diputar.
+     */
+    private fun hostActivity(ctx: Context): Activity? {
+        var c: Context? = ctx
+        while (c != null) {
+            if (c is Activity) {
+                if (c.isFinishing) return null
+                if (android.os.Build.VERSION.SDK_INT >= 17 && c.isDestroyed) return null
+                return c
+            }
+            c = (c as? android.content.ContextWrapper)?.baseContext
+        }
+        val cur = App.getCurrentActivity()
+        return if (cur != null && !cur.isFinishing) cur else null
+    }
+
     private fun runUi(ctx: Context, block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             try { block() } catch (e: Exception) {
@@ -60,6 +79,7 @@ object PlayerDialog {
     fun showAfterRecording(ctx: Context, uriStr: String, path: String, durText: String, note: String = "") {
         runUi(ctx) {
             val wrapped = safeCtx(ctx) ?: return@runUi
+            val host = hostActivity(ctx) ?: return@runUi
             val durationLabel = wrapped.getString(R.string.duration)
             val locationLabel = wrapped.getString(R.string.player_location)
             val subtitle = "$durationLabel: $durText" +
@@ -67,7 +87,7 @@ object PlayerDialog {
                 (if (note.isNotEmpty()) "\n\n$note" else "")
 
             if (uriStr.isEmpty() && path.isEmpty()) {
-                AlertDialog.Builder(wrapped)
+                AlertDialog.Builder(host)
                     .setTitle(wrapped.getString(R.string.player_stopped))
                     .setMessage(subtitle.ifEmpty { wrapped.getString(R.string.status_stopped) })
                     .setPositiveButton(wrapped.getString(R.string.player_ok), null)
@@ -83,7 +103,7 @@ object PlayerDialog {
                 wrapped.getString(R.string.action_cancel)
             )
 
-            AlertDialog.Builder(wrapped)
+            AlertDialog.Builder(host)
                 .setTitle(wrapped.getString(R.string.action_title))
                 .setMessage(subtitle)
                 .setItems(items) { d, which ->
@@ -130,7 +150,7 @@ object PlayerDialog {
         val subtitle = "$durationLabel: $durText" +
             (if (path.isNotEmpty()) "\n\n$locationLabel:\n$path" else "")
         show(
-            wrapped,
+            ctx,
             Uri.parse(uriStr),
             "${wrapped.getString(R.string.player_title)} · $name",
             subtitle,
@@ -174,6 +194,7 @@ object PlayerDialog {
 
     fun show(ctx: Context, uri: Uri, title: String, subtitle: String, isVideo: Boolean, autoPlay: Boolean) {
         val wrapped = safeCtx(ctx) ?: return
+        val host = hostActivity(ctx) ?: return
         val density = wrapped.resources.displayMetrics.density
         fun dp(v: Int): Int = (v * density + 0.5f).toInt()
 
@@ -361,7 +382,7 @@ object PlayerDialog {
         }
 
         try {
-            val dialog = AlertDialog.Builder(wrapped)
+            val dialog = AlertDialog.Builder(host)
                 .setTitle(title)
                 .setView(root)
                 .setPositiveButton(wrapped.getString(R.string.player_close), null)
