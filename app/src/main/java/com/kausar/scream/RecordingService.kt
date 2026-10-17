@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
@@ -67,6 +68,8 @@ class RecordingService : Service() {
         const val EXTRA_MIC_GAIN = "mic_gain"
         const val EXTRA_NOISE_LEVEL = "noise_level"
         const val EXTRA_EFFECT = "effect"
+        const val EXTRA_ROOM_SIZE = "room_size"      // 0..1 keluasan ruangan (reverb)
+        const val EXTRA_ECHO_LEVEL = "echo_level"    // 0..1 kekuatan gema (reverb)
         const val EFFECT_STUDIO = 0
         const val EFFECT_FLANGER = 1
         const val EFFECT_ECHO = 2
@@ -108,6 +111,7 @@ class RecordingService : Service() {
 
     private class WavSession(val op: Opened, val file: File, val out: FileOutputStream) {
         @Volatile var thread: Thread? = null
+        @Volatile var writer: Thread? = null
     }
 
     private val wavSessions = ArrayList<WavSession>()
@@ -134,6 +138,10 @@ class RecordingService : Service() {
     private var micGain = 1.0f
     private var noiseLevel = 0.3f
     private var effectMode = 0
+    private var roomSize = 0.95f      // keluasan ruangan 95%
+    private var echoLevel = 0.20f     // gema 20%
+    @Volatile private var videoStartNs = 0L
+    @Volatile private var audioStartNs = 0L
     private var formatNote = ""
     private var wakeLock: PowerManager.WakeLock? = null
     private val bookmarks = ArrayList<Long>()
@@ -237,6 +245,8 @@ class RecordingService : Service() {
         micGain = intent.getFloatExtra(EXTRA_MIC_GAIN, 1.0f).coerceIn(0.1f, 2.0f)
         noiseLevel = intent.getFloatExtra(EXTRA_NOISE_LEVEL, 0.3f).coerceIn(0f, 1f)
         effectMode = intent.getIntExtra(EXTRA_EFFECT, EFFECT_STUDIO)
+        roomSize = intent.getFloatExtra(EXTRA_ROOM_SIZE, 0.95f).coerceIn(0f, 1f)
+        echoLevel = intent.getFloatExtra(EXTRA_ECHO_LEVEL, 0.20f).coerceIn(0f, 1f)
         bookmarks.clear()
         formatNote = ""
         paused = false
@@ -583,14 +593,15 @@ class RecordingService : Service() {
                 surface, null, null
             ) ?: throw IllegalStateException("VirtualDisplay gagal dibuat")
 
+            mr.start()
+            videoStartNs = SystemClock.elapsedRealtimeNanos()
+            recording = true
+
             if (needInternal) {
                 val iw = File(outDir("audio"), "internal_${System.currentTimeMillis()}.wav")
                 startInternalWav(cfg, iw)
                 extraFiles.add(iw)
             }
-
-            mr.start()
-            recording = true
         } catch (e: Exception) {
             try { mr.reset() } catch (_: Exception) {}
             try { mr.release() } catch (_: Exception) {}
@@ -761,9 +772,32 @@ class RecordingService : Service() {
         recording = true
         op.internal?.startRecording()
         op.mic?.startRecording()
+        audioStartNs = SystemClock.elapsedRealtimeNanos()
         val bad = (op.internal != null && op.internal.recordingState != AudioRecord.RECORDSTATE_RECORDING) ||
             (op.mic != null && op.mic.recordingState != AudioRecord.RECORDSTATE_RECORDING)
         if (bad) throw IllegalStateException("Perekam audio tidak bisa dimulai (mikrofon dipakai aplikasi lain?)")
+
+        // Penangkap audio TIDAK menulis ke disk. Hasil dikirim lewat antrean ke thread penulis,
+        // sehingga disk yang lambat tidak membuat buffer AudioRecord meluap (suara putus-putus / "keselek").
+        val queue = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+        val endMark = ByteArray(0)
+
+        val writer = Thread({
+            val bos = java.io.BufferedOutputStream(out, 256 * 1024)
+            try {
+                while (true) {
+                    val b = queue.take()
+                    if (b.isEmpty()) break
+                    bos.write(b, 0, b.size)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "wav writer", e)
+                mainHandler.post { if (recording) stopAll() }
+            }
+            try { bos.flush() } catch (_: Exception) {}
+        }, "wav-io")
+        sess.writer = writer
+        writer.start()
 
         val t = Thread({
             try {
@@ -773,13 +807,13 @@ class RecordingService : Service() {
             val internal = op.internal
             val rate = op.rate
             val micCh = op.micCh
-            val blockFrames = (rate / 10).coerceAtLeast(256)       // ±100 ms per blok
+            val blockFrames = (rate / 20).coerceAtLeast(256)       // ±50 ms per blok (latensi rendah)
             val micBuf = ByteArray(blockFrames * micCh * 2)
             val intBuf = ByteArray(blockFrames * 4)
             val fx = AudioFx(
                 rate, if (mic != null) micCh else 2, effectMode,
                 micGain * (if (whisperMode) 2.0f else 1.0f),
-                enableNoise, noiseLevel, dynamicGain
+                enableNoise, noiseLevel, dynamicGain, roomSize, echoLevel
             )
             val widen = mic != null && micCh == 1 && outCh == 2
             var silenceRun = 0
@@ -833,15 +867,16 @@ class RecordingService : Service() {
                             processed[i] = (processed[i] + intS[i]).coerceIn(-32768, 32767).toShort()
                         }
                     }
-                    val bytes = shortsToBytes(processed, processed.size)
-                    out.write(bytes, 0, bytes.size)
+                    queue.offer(shortsToBytes(processed, processed.size))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "wav loop", e)
                 failed = recording
+            } finally {
+                queue.offer(endMark)
             }
             if (failed) mainHandler.post { if (recording) stopAll() }
-        }, "wav-writer")
+        }, "wav-capture")
         sess.thread = t
         t.start()
     }
@@ -854,24 +889,33 @@ class RecordingService : Service() {
         private val gain: Float,
         private val noiseOn: Boolean,
         private val noiseLevel: Float,
-        private val agcOn: Boolean
+        private val agcOn: Boolean,
+        roomSize: Float,      // 0..1 : keluasan ruangan (reverb)
+        echoLevel: Float      // 0..1 : kekuatan gema (reverb)
     ) {
-        private val delayLen = (rate * 0.25).toInt().coerceAtLeast(256)
+        private val delayLen = (rate * 0.4).toInt().coerceAtLeast(256)
         private val delay = Array(channels) { ShortArray(delayLen) }
         private var pos = 0
         private var phase = 0.0
         private var agcGain = 1.0f
+        private var lastGain = gain
         private var seed = 12345L
 
-        // Flanger: delay 1–5 ms, LFO ±0,35 Hz (sebelumnya terlalu singkat/cepat sehingga tak terdengar)
+        // Flanger: delay 1–5 ms, LFO ±0,35 Hz
         private val lfoInc = 2.0 * Math.PI * 0.35 / rate
         private val flangeBase = rate * 0.003
         private val flangeDepth = rate * 0.002
         private val echoDelay = (rate * 0.12).toInt().coerceIn(1, delayLen - 1)
-        private val d1 = (rate * 0.025).toInt().coerceIn(1, delayLen - 1)
-        private val d2 = (rate * 0.045).toInt().coerceIn(1, delayLen - 1)
-        private val d3 = (rate * 0.070).toInt().coerceIn(1, delayLen - 1)
-        private val d4 = (rate * 0.095).toInt().coerceIn(1, delayLen - 1)
+
+        // Reverb: semakin luas ruangan, semakin jauh jarak pantulan
+        private val sc = 0.5 + roomSize.coerceIn(0f, 1f) * 1.5
+        private val d1 = (rate * 0.025 * sc).toInt().coerceIn(1, delayLen - 1)
+        private val d2 = (rate * 0.045 * sc).toInt().coerceIn(1, delayLen - 1)
+        private val d3 = (rate * 0.070 * sc).toInt().coerceIn(1, delayLen - 1)
+        private val d4 = (rate * 0.095 * sc).toInt().coerceIn(1, delayLen - 1)
+        private val fb = (echoLevel.coerceIn(0f, 1f) * 3f).coerceAtMost(0.85f)
+        private val widenBack = (d1 / 2).coerceIn(12, delayLen - 1)
+        private val widenMix = if (effect == EFFECT_REVERB) 0.15f + 0.30f * roomSize.coerceIn(0f, 1f) else 0.15f
 
         fun peak(s: ShortArray, count: Int): Int {
             var p = 0
@@ -895,11 +939,15 @@ class RecordingService : Service() {
         fun process(src: ShortArray, frames: Int, widen: Boolean): ShortArray {
             val outCh = if (widen) 2 else channels
             val out = ShortArray(frames * outCh)
-            val g = gain * agcGain
+            // Gain diubah mulus sepanjang blok (tanpa lompatan) agar tidak terdengar "memompa"/tersendat
+            val gStart = lastGain
+            val gEnd = gain * agcGain
+            lastGain = gEnd
             val noiseAmp = if (noiseOn && noiseLevel > 0f) noiseLevel * 0.04f else 0f
             var si = 0
             var oi = 0
             for (f in 0 until frames) {
+                val g = gStart + (gEnd - gStart) * f / frames
                 val fd = if (effect == EFFECT_FLANGER)
                     (flangeBase + flangeDepth * kotlin.math.sin(phase)).toInt().coerceIn(1, delayLen - 1)
                 else 0
@@ -920,18 +968,16 @@ class RecordingService : Service() {
                             v = v * 0.75f + d[(pos - echoDelay + delayLen) % delayLen] * 0.55f
                         }
                         EFFECT_REVERB -> {
-                            v = v * 0.5f +
-                                d[(pos - d1 + delayLen) % delayLen] * 0.28f +
-                                d[(pos - d2 + delayLen) % delayLen] * 0.18f +
-                                d[(pos - d3 + delayLen) % delayLen] * 0.12f +
-                                d[(pos - d4 + delayLen) % delayLen] * 0.08f
+                            val wet = d[(pos - d1 + delayLen) % delayLen] * 0.4f +
+                                d[(pos - d2 + delayLen) % delayLen] * 0.3f +
+                                d[(pos - d3 + delayLen) % delayLen] * 0.2f +
+                                d[(pos - d4 + delayLen) % delayLen] * 0.1f
+                            v = v * (1f - 0.25f * fb) + wet * fb
                         }
                     }
                     val o = v.toInt().coerceIn(-32768, 32767).toShort()
                     if (widen && c == 0) {
-                        val back = if (effect == EFFECT_REVERB) 48 else 12
-                        val mix = if (effect == EFFECT_REVERB) 0.35f else 0.15f
-                        val r = (o * (1f - mix) + d[(pos - back + delayLen) % delayLen] * mix)
+                        val r = (o * (1f - widenMix) + d[(pos - widenBack + delayLen) % delayLen] * widenMix)
                             .toInt().coerceIn(-32768, 32767)
                         out[oi++] = o
                         out[oi++] = r.toShort()
@@ -1054,6 +1100,11 @@ class RecordingService : Service() {
                 try { th.join(1000) } catch (_: Exception) {}
             }
         }
+        val wr = s.writer
+        if (wr != null) {
+            try { wr.join(8000) } catch (_: Exception) {}
+            if (wr.isAlive) { try { wr.interrupt() } catch (_: Exception) {} ; try { wr.join(1000) } catch (_: Exception) {} }
+        }
         try { s.op.mic?.release() } catch (_: Exception) {}
         try { s.op.internal?.release() } catch (_: Exception) {}
         try { s.out.flush() } catch (_: Exception) {}
@@ -1147,6 +1198,10 @@ class RecordingService : Service() {
                     notes.add("Gagal melanjutkan: ${e.message}")
                 }
             } else {
+                // Rekam layar + audio internal: satukan ke dalam SATU file video
+                if (outputPath.endsWith(".mp4", true) && extraFiles.isNotEmpty() && recorderOk) {
+                    if (mergeInternalAudio()) notes.add("Audio internal sudah digabung ke dalam video.")
+                }
                 // Pindahkan ke folder publik Musik / Movies (bukan data app)
                 finalPath = outputPath
                 if (outputPath.isNotEmpty()) {
@@ -1212,6 +1267,31 @@ class RecordingService : Service() {
             finishing = false
         }
         if (inline) deliver.run() else mainHandler.post(deliver)
+    }
+
+    /** Gabungkan WAV audio internal ke MP4. true = berhasil (WAV dihapus), false = biarkan terpisah. */
+    private fun mergeInternalAudio(): Boolean {
+        val video = File(outputPath)
+        val wav = extraFiles.firstOrNull() ?: return false
+        if (!video.exists() || video.length() <= 0 || !wav.exists() || wav.length() <= 44 + 4096) return false
+        val ts = System.currentTimeMillis()
+        val aac = File(cacheDir, "mix_audio_$ts.m4a")
+        val merged = File(cacheDir, "merged_$ts.mp4")
+        return try {
+            if (!AvMerger.wavToAac(wav, aac)) return false
+            val offUs = ((audioStartNs - videoStartNs) / 1000L).coerceAtLeast(0L)
+            if (!AvMerger.mux(video, aac, merged, offUs) || merged.length() <= 0) return false
+            merged.copyTo(video, overwrite = true)
+            try { wav.delete() } catch (_: Exception) {}
+            extraFiles.remove(wav)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "mergeInternalAudio", e)
+            false
+        } finally {
+            try { aac.delete() } catch (_: Exception) {}
+            try { merged.delete() } catch (_: Exception) {}
+        }
     }
 
     private fun sendStatus(msg: String, path: String, uri: String = "", note: String = "") {
