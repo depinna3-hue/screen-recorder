@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kausar Recorder</string>
+    <string name="header_title">Kausar Recorder</string>
+    <string name="header_hint">Choose recording type, set effects, then start</string>
+    <string name="section_rec_type">Recording type</string>
+    <string name="section_mic_source">Microphone / audio source</string>
+    <string name="section_format">Format and quality</string>
+    <string name="section_effects">Audio effects</string>
+    <string name="section_controls">Controls</string>
+    <string name="section_list">Saved recordings</string>
+    <string name="section_help">How to use</string>
+    <string name="rec_type_screen">Screen recording</string>
+    <string name="rec_type_audio">Voice recording</string>
+    <string name="mode_screen">Screen + microphone</string>
+    <string name="mode_mic">Microphone only</string>
+    <string name="mode_internal">Internal audio</string>
+    <string name="mode_internal_mic">Internal + microphone</string>
+    <string name="format_aac">AAC (.m4a)</string>
+    <string name="format_wav">WAV (.wav)</string>
+    <string name="effect_studio">Studio</string>
+    <string name="effect_flanger">Flanger</string>
+    <string name="effect_echo">Echo</string>
+    <string name="effect_reverb">Reverb (V8)</string>
+    <string name="label_mic_gain">Microphone strength</string>
+    <string name="label_noise">Noise level</string>
+    <string name="label_sample">Sample rate</string>
+    <string name="btn_start">Start recording</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_bookmark">Add bookmark</string>
+    <string name="btn_settings">Settings</string>
+    <string name="btn_refresh_list">Refresh list</string>
+    <string name="btn_help">Read guide</string>
+    <string name="status_ready">Ready</string>
+    <string name="status_recording">Recording…</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_stopped">Recording stopped</string>
+    <string name="status_failed">Failed</string>
+    <string name="status_already_running">A recording is already running. Stop it first.</string>
+    <string name="status_need_projection">Waiting for screen capture permission…</string>
+    <string name="status_internal_api">Internal audio requires Android 10+</string>
+    <string name="status_projection_denied">Screen permission denied</string>
+    <string name="chk_stereo">Force stereo (mono to stereo)</string>
+    <string name="chk_noise">Noise mode (soft like Windows)</string>
+    <string name="chk_silence">Skip silence</string>
+    <string name="chk_gain_auto">Dynamic gain (AGC)</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_apply">Apply</string>
+    <string name="settings_close">Close</string>
+    <string name="lang_changed">Language changed.</string>
+    <string name="permission_needed">Permissions are required for the app to work</string>
+    <string name="no_recordings">No recordings yet</string>
+    <string name="duration">Duration</string>
+    <string name="saved_to">Saved to</string>
+    <string name="player_title">Recording finished</string>
+    <string name="player_stopped">Recording stopped</string>
+    <string name="player_location">Location</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_back">« 10 sec</string>
+    <string name="player_fwd">10 sec »</string>
+    <string name="player_close">Close</string>
+    <string name="player_ok">OK</string>
+    <string name="player_fail">Failed to play this recording</string>
+    <string name="player_fail_msg">Cannot play: %1$s</string>
+    <string name="player_recording">Recording</string>
+    <string name="action_title">What would you like to do?</string>
+    <string name="action_save">Save</string>
+    <string name="action_play">Play</string>
+    <string name="action_share">Share</string>
+    <string name="action_share_save">Share and save</string>
+    <string name="action_cancel">Cancel (delete)</string>
+    <string name="action_saved">Recording saved</string>
+    <string name="action_discarded">Recording discarded</string>
+    <string name="share_via">Share recording</string>
+    <string name="notif_channel">Recording</string>
+    <string name="notif_title">Recording in progress</string>
+    <string name="notif_title_paused">Recording paused</string>
+    <string name="notif_text">Tap to open the app</string>
+    <string name="notif_pause">Pause</string>
+    <string name="notif_resume">Resume</string>
+    <string name="notif_stop">Stop</string>
+    <string name="help_title">How to use</string>
+    <string name="help_body" formatted="false">Kausar Recorder is developed by Alkausar. Record screen and voice with audio effects.
+
+=== RECORDING TYPE ===
+• Screen recording: capture the phone display (needs screen capture permission).
+• Voice recording: audio only, no video.
+
+=== MICROPHONE / AUDIO SOURCE ===
+• Microphone only: phone mic.
+• Internal audio: sound from other apps (Android 10+).
+• Internal + microphone: both mixed.
+• Screen + microphone: screen video with mic audio.
+
+=== FORMAT ===
+• AAC (.m4a): smaller files, good for long-term storage.
+• WAV (.wav): higher quality; used automatically when effects are on.
+
+=== AUDIO EFFECTS ===
+• Studio: clean sound, no effect.
+• Flanger: light modulation.
+• Echo: clear single echo.
+• Reverb (V8): multi-tap stereo reverb like a V8 sound card.
+
+=== SLIDERS ===
+• Microphone strength: 100%% is normal; raise if quiet, lower if clipping.
+• Noise level: amount of soft noise when noise mode is on (0%% = off).
+
+=== CHECKBOXES ===
+• Force stereo: on = convert mono to wide stereo; off = keep mono.
+• Noise mode: on = soft Windows-like noise floor; off = no noise.
+• Skip silence: on = skip very quiet parts (smaller files); off = record everything.
+• Dynamic gain (AGC): on = boost quiet speech; off = fixed volume.
+
+=== BUTTONS ===
+• Start recording: begin a session.
+• Stop: end and open Save / Play / Share dialog.
+• Add bookmark: mark a timestamp while recording.
+• Settings: change app language.
+• Read guide: show this help.
+• Refresh list: reload saved files.
+
+=== NOTIFICATION ===
+While recording, use the notification for Pause / Resume / Stop without opening the app.
+
+=== STORAGE ===
+Files go under KausarRecorder:
+• Music/KausarRecorder/Audio — voice
+• Movies/KausarRecorder/Screen — screen</string>
+    <string name="bookmark_added">Bookmark added at %1$d seconds</string>
+</resources>
