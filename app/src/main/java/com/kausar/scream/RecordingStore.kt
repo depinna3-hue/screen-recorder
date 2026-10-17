@@ -56,8 +56,6 @@ object RecordingStore {
         }
 
         val out = ArrayList<Item>()
-        // SecurityException (izin media ditolak) / error provider tidak boleh membuat aplikasi crash
-        try {
         ctx.contentResolver.query(
             collection, projection, selection, args,
             MediaStore.MediaColumns.DATE_ADDED + " DESC"
@@ -78,8 +76,6 @@ object RecordingStore {
                     )
                 )
             }
-        }
-        } catch (_: Exception) {
         }
         return out
     }
@@ -129,8 +125,6 @@ object RecordingStore {
             clipData = ClipData.newRawUri(item.name, item.uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val chooser = Intent.createChooser(send, "Bagikan rekaman")
-        if (ctx !is android.app.Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(chooser)
+        ctx.startActivity(Intent.createChooser(send, "Bagikan rekaman"))
     }
 }
