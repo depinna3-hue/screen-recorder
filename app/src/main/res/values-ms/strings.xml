@@ -130,4 +130,10 @@ Files go under KausarRecorder:
 • Music/KausarRecorder/Audio — voice
 • Movies/KausarRecorder/Screen — screen</string>
     <string name="bookmark_added">Bookmark added at %1$d seconds</string>
+    <string name="section_filter">Mic filter (system)</string>
+    <string name="filter_original">Original (no filter)</string>
+    <string name="filter_voice">Voice (NS+AGC)</string>
+    <string name="filter_quiet">Quiet sounds (AGC)</string>
+    <string name="filter_music">Music (natural)</string>
+    <string name="filter_outdoor">Outdoor (NS)</string>
 </resources>
