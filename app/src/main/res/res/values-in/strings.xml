@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kausar Recorder</string>
+    <string name="header_title">Kausar Recorder</string>
+    <string name="header_hint">Pilih jenis rekaman, atur efek, lalu mulai</string>
+    <string name="section_rec_type">Jenis rekaman</string>
+    <string name="section_mic_source">Sumber mikrofon / audio</string>
+    <string name="section_format">Format dan kualitas</string>
+    <string name="section_effects">Efek audio</string>
+    <string name="section_controls">Kontrol</string>
+    <string name="section_list">Rekaman tersimpan</string>
+    <string name="section_help">Petunjuk penggunaan</string>
+    <string name="rec_type_screen">Rekaman layar</string>
+    <string name="rec_type_audio">Rekaman suara</string>
+    <string name="mode_screen">Layar + mikrofon</string>
+    <string name="mode_mic">Mikrofon saja</string>
+    <string name="mode_internal">Audio internal</string>
+    <string name="mode_internal_mic">Internal + mikrofon</string>
+    <string name="format_aac">AAC (.m4a)</string>
+    <string name="format_wav">WAV (.wav)</string>
+    <string name="effect_studio">Studio</string>
+    <string name="effect_flanger">Flanger</string>
+    <string name="effect_echo">Echo</string>
+    <string name="effect_reverb">Gema (V8)</string>
+    <string name="label_mic_gain">Kekuatan mikrofon</string>
+    <string name="label_noise">Tingkat noise</string>
+    <string name="label_sample">Sample rate</string>
+    <string name="btn_start">Mulai rekam</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_bookmark">Tandai bookmark</string>
+    <string name="btn_settings">Pengaturan</string>
+    <string name="btn_refresh_list">Muat ulang daftar</string>
+    <string name="btn_help">Baca petunjuk</string>
+    <string name="status_ready">Siap</string>
+    <string name="status_recording">Sedang merekam…</string>
+    <string name="status_paused">Dijeda</string>
+    <string name="status_stopped">Rekaman dihentikan</string>
+    <string name="status_failed">Gagal</string>
+    <string name="status_already_running">Masih ada rekaman berjalan. Hentikan dulu.</string>
+    <string name="status_need_projection">Menunggu izin rekam layar…</string>
+    <string name="status_internal_api">Audio internal hanya di Android 10+</string>
+    <string name="status_projection_denied">Izin layar ditolak</string>
+    <string name="chk_stereo">Paksa stereo (mono menjadi stereo)</string>
+    <string name="chk_noise">Mode noise (lembut seperti Windows)</string>
+    <string name="chk_silence">Lewati keheningan</string>
+    <string name="chk_gain_auto">Penguat dinamis (AGC)</string>
+    <string name="settings_title">Pengaturan</string>
+    <string name="settings_language">Bahasa</string>
+    <string name="settings_apply">Terapkan</string>
+    <string name="settings_close">Tutup</string>
+    <string name="lang_changed">Bahasa diubah.</string>
+    <string name="permission_needed">Izin diperlukan agar aplikasi berfungsi</string>
+    <string name="no_recordings">Belum ada rekaman</string>
+    <string name="duration">Durasi</string>
+    <string name="saved_to">Disimpan di</string>
+    <string name="player_title">Rekaman selesai</string>
+    <string name="player_stopped">Rekaman dihentikan</string>
+    <string name="player_location">Lokasi</string>
+    <string name="player_play">Putar</string>
+    <string name="player_pause">Jeda</string>
+    <string name="player_back">« 10 dtk</string>
+    <string name="player_fwd">10 dtk »</string>
+    <string name="player_close">Tutup</string>
+    <string name="player_ok">OK</string>
+    <string name="player_fail">Gagal memutar rekaman ini</string>
+    <string name="player_fail_msg">Tidak bisa memutar: %1$s</string>
+    <string name="player_recording">Rekaman</string>
+    <string name="action_title">Apa yang ingin dilakukan?</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_play">Putar</string>
+    <string name="action_share">Bagikan</string>
+    <string name="action_share_save">Bagikan dan simpan</string>
+    <string name="action_cancel">Batal (hapus)</string>
+    <string name="action_saved">Rekaman disimpan</string>
+    <string name="action_discarded">Rekaman tidak disimpan</string>
+    <string name="share_via">Bagikan rekaman</string>
+    <string name="notif_channel">Rekaman</string>
+    <string name="notif_title">Sedang merekam</string>
+    <string name="notif_title_paused">Rekaman dijeda</string>
+    <string name="notif_text">Ketuk untuk membuka aplikasi</string>
+    <string name="notif_pause">Jeda</string>
+    <string name="notif_resume">Lanjutkan</string>
+    <string name="notif_stop">Stop</string>
+    <string name="help_title">Petunjuk penggunaan</string>
+    <string name="help_body" formatted="false">Kausar Recorder dikembangkan oleh Alkausar. Aplikasi ini untuk merekam layar dan suara dengan efek audio.
+
+=== JENIS REKAMAN ===
+• Rekaman layar: merekam tampilan HP (perlu izin tangkap layar).
+• Rekaman suara: hanya audio tanpa video.
+
+=== SUMBER MIKROFON / AUDIO ===
+• Mikrofon saja: suara dari mic HP.
+• Audio internal: suara dari aplikasi lain (Android 10+).
+• Internal + mikrofon: gabungan keduanya.
+• Layar + mikrofon: video layar dengan suara mic.
+
+=== FORMAT ===
+• AAC (.m4a): file kecil, cocok simpan lama.
+• WAV (.wav): kualitas tinggi; dipakai otomatis jika memakai efek.
+
+=== EFEK AUDIO ===
+• Studio: suara bersih tanpa efek.
+• Flanger: efek modulate ringan.
+• Echo: gema tunggal jelas.
+• Gema (V8): reverb multi-tap stereo seperti soundcard V8.
+
+=== SLIDER ===
+• Kekuatan mikrofon: 100%% normal; naikkan jika suara pelan, turunkan jika pecah.
+• Tingkat noise: besar noise latar saat mode noise aktif (0%% = mati).
+
+=== KOTAK CENTANG ===
+• Paksa stereo: dicentang = mono diubah jadi stereo lebar; tidak dicentang = tetap mono.
+• Mode noise: dicentang = tambah noise lembut seperti Windows; tidak = tanpa noise.
+• Lewati keheningan: dicentang = bagian sangat sepi tidak ditulis (file lebih hemat); tidak = rekam semua.
+• Penguat dinamis (AGC): dicentang = suara pelan dikuatkan otomatis; tidak = volume tetap.
+
+=== TOMBOL ===
+• Mulai rekam: mulai sesi rekaman.
+• Stop: hentikan dan buka dialog Simpan / Putar / Bagikan.
+• Tandai bookmark: tandai waktu saat merekam.
+• Pengaturan: ganti bahasa aplikasi.
+• Baca petunjuk: menampilkan panduan ini.
+• Muat ulang daftar: segarkan daftar file tersimpan.
+
+=== NOTIFIKASI ===
+Saat merekam, buka notifikasi untuk Jeda / Lanjutkan / Stop tanpa membuka aplikasi.
+
+=== PENYIMPANAN ===
+File masuk folder KausarRecorder:
+• Music/KausarRecorder/Audio — rekaman suara
+• Movies/KausarRecorder/Screen — rekaman layar</string>
+    <string name="bookmark_added">Bookmark ditambahkan di %1$d detik</string>
+</resources>
