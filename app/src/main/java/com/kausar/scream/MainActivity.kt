@@ -159,8 +159,7 @@ class MainActivity : AppCompatActivity() {
         spinMic = spinner(arrayOf(
             getString(R.string.mode_mic),
             getString(R.string.mode_internal),
-            getString(R.string.mode_internal_mic),
-            getString(R.string.mode_screen)
+            getString(R.string.mode_internal_mic)
         ))
         root.addView(spinMic)
 
