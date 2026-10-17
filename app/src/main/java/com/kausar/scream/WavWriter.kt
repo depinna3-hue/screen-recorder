@@ -10,10 +10,10 @@ import java.nio.ByteOrder
 object WavWriter {
     fun writeHeader(out: FileOutputStream, sampleRate: Int, channels: Int) {
         val hdr = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-        hdr.put("RIFF".toByteArray())
+        hdr.put("RIFF".toByteArray(Charsets.US_ASCII))
         hdr.putInt(0) // placeholder size
-        hdr.put("WAVE".toByteArray())
-        hdr.put("fmt ".toByteArray())
+        hdr.put("WAVE".toByteArray(Charsets.US_ASCII))
+        hdr.put("fmt ".toByteArray(Charsets.US_ASCII))
         hdr.putInt(16)
         hdr.putShort(1) // PCM
         hdr.putShort(channels.toShort())
@@ -21,19 +21,21 @@ object WavWriter {
         hdr.putInt(sampleRate * channels * 2)
         hdr.putShort((channels * 2).toShort())
         hdr.putShort(16)
-        hdr.put("data".toByteArray())
+        hdr.put("data".toByteArray(Charsets.US_ASCII))
         hdr.putInt(0) // placeholder data size
         out.write(hdr.array())
     }
 
+    /** Isi ukuran RIFF/data setelah rekaman selesai. Aman untuk file > 2 GB dan file yang terlalu pendek. */
     fun finalize(file: File) {
         val total = file.length()
-        val dataSize = (total - 44).toInt().coerceAtLeast(0)
+        if (total < 44) return
+        val dataSize = (total - 44).coerceAtMost(0xFFFFFFFFL - 36L)
         RandomAccessFile(file, "rw").use { raf ->
             raf.seek(4)
-            raf.write(intLE(dataSize + 36))
+            raf.write(intLE((dataSize + 36L).toInt()))
             raf.seek(40)
-            raf.write(intLE(dataSize))
+            raf.write(intLE(dataSize.toInt()))
         }
     }
 
