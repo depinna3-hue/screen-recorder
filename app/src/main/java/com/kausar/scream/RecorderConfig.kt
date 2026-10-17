@@ -16,6 +16,20 @@ data class RecorderConfig(
         else -> 64_000
     }
 
+    /**
+     * Bitrate AAC yang aman untuk sample rate & jumlah kanal tertentu.
+     * Sebagian encoder menolak bitrate tinggi pada sample rate rendah (mis. 160 kbps @ 16 kHz).
+     */
+    fun safeAudioBitrate(rate: Int, channels: Int): Int {
+        val perChannel = when {
+            rate <= 16000 -> 48_000
+            rate <= 24000 -> 64_000
+            rate <= 32000 -> 96_000
+            else -> 160_000
+        }
+        return audioBitrate().coerceAtMost(perChannel * channels.coerceAtLeast(1))
+    }
+
     fun videoSize(displayW: Int, displayH: Int): Pair<Int, Int> {
         val targetH = when (videoQuality) {
             0 -> 480
