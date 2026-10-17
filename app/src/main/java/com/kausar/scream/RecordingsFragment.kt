@@ -67,7 +67,6 @@ class RecordingsFragment : Fragment() {
     private var contStartedAt = 0L
     private var pendingContinue: RecordingStore.Item? = null
     private var receiverRegistered = false
-    private var appCtx: Context? = null
 
     private val dateFmt = SimpleDateFormat("d MMM yyyy HH:mm", Locale("id", "ID"))
 
@@ -120,7 +119,6 @@ class RecordingsFragment : Fragment() {
         // Didaftarkan selama fragment hidup supaya hasil "lanjutkan rekaman" tidak terlewat
         val f = IntentFilter(RecordingService.BROADCAST_STATUS)
         val app = requireContext().applicationContext
-        appCtx = app
         if (Build.VERSION.SDK_INT >= 33) {
             app.registerReceiver(statusReceiver, f, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -246,7 +244,7 @@ class RecordingsFragment : Fragment() {
 
     override fun onDestroy() {
         if (receiverRegistered) {
-            try { appCtx?.unregisterReceiver(statusReceiver) } catch (_: Exception) {}
+            try { requireContext().applicationContext.unregisterReceiver(statusReceiver) } catch (_: Exception) {}
             receiverRegistered = false
         }
         super.onDestroy()
@@ -399,12 +397,7 @@ class RecordingsFragment : Fragment() {
             putExtra(RecordingService.EXTRA_CONTINUE_URI, item.uri.toString())
             putExtra(RecordingService.EXTRA_CHANNELS, info.channels)
         }
-        try {
-            if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
-        } catch (e: Exception) {
-            closeContinueDialog()
-            toast("Gagal melanjutkan rekaman: ${e.message ?: e.javaClass.simpleName}")
-        }
+        if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
     }
 
     private fun showContinueDialog(item: RecordingStore.Item) {
@@ -443,9 +436,7 @@ class RecordingsFragment : Fragment() {
         stop.setOnClickListener {
             stop.isEnabled = false
             info.text = "Menyimpan dan menggabungkan..."
-            try {
-                ctx.startService(Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_STOP))
-            } catch (_: Exception) {}
+            ctx.startService(Intent(ctx, RecordingService::class.java).setAction(RecordingService.ACTION_STOP))
         }
         box.addView(timer)
         box.addView(info)
