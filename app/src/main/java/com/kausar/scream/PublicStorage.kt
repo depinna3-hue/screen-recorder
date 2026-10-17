@@ -39,8 +39,10 @@ object PublicStorage {
                 // jangan .nomedia di video agar muncul di galeri; buat placeholder kosong opsional
                 File(movies, ".keep").apply { if (!exists()) writeText("KausarRecorder") }
             } else {
-                // API 29+: folder muncul otomatis saat file pertama ditulis lewat MediaStore.
-                // (Memasukkan file .txt ke Musik/Movies ditolak MediaStore dan hanya menimbulkan error.)
+                // API 29+: folder muncul saat file pertama ditulis lewat MediaStore.
+                // Tulis file penanda ringan agar folder langsung terlihat.
+                trySeed(ctx, false)
+                trySeed(ctx, true)
             }
         } catch (_: Exception) {}
     }
@@ -84,7 +86,7 @@ object PublicStorage {
             @Suppress("DEPRECATION")
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "$ROOT/$AUDIO_SUB")
             if (!dir.exists()) dir.mkdirs()
-            val f = uniqueFile(dir, name)
+            val f = File(dir, name)
             Target(f, null, f.absolutePath)
         }
     }
@@ -104,23 +106,9 @@ object PublicStorage {
             @Suppress("DEPRECATION")
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "$ROOT/$SCREEN_SUB")
             if (!dir.exists()) dir.mkdirs()
-            val f = uniqueFile(dir, name)
+            val f = File(dir, name)
             Target(f, null, f.absolutePath)
         }
-    }
-
-    /** Hindari menimpa file yang sudah ada (jalur legacy tidak diberi nama unik oleh MediaStore). */
-    private fun uniqueFile(dir: File, name: String): File {
-        var f = File(dir, name)
-        if (!f.exists()) return f
-        val base = name.substringBeforeLast('.', name)
-        val ext = name.substringAfterLast('.', "")
-        var i = 1
-        while (f.exists() && i < 1000) {
-            f = File(dir, if (ext.isEmpty()) "${base}_$i" else "${base}_$i.$ext")
-            i++
-        }
-        return f
     }
 
     fun openOut(ctx: Context, target: Target): OutputStream {
@@ -146,17 +134,8 @@ object PublicStorage {
     fun publishFileEx(ctx: Context, temp: File, isVideo: Boolean, mime: String): Published {
         val name = temp.name
         val target = if (isVideo) prepareVideoFile(ctx, name) else prepareAudioFile(ctx, name, mime)
-        try {
-            openOut(ctx, target).use { out ->
-                FileInputStream(temp).use { inp -> inp.copyTo(out, 64 * 1024) }
-            }
-        } catch (e: Exception) {
-            // Jangan tinggalkan entri "pending"/file setengah jadi
-            try {
-                if (target.uri != null) ctx.contentResolver.delete(target.uri, null, null)
-                else target.file?.delete()
-            } catch (_: Exception) {}
-            throw e
+        openOut(ctx, target).use { out ->
+            FileInputStream(temp).use { inp -> inp.copyTo(out) }
         }
         finishPending(ctx, target)
         val uri = target.uri ?: target.file?.let { registerLegacy(ctx, it, mime, isVideo) }
