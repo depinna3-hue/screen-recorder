@@ -68,7 +68,9 @@ class MainActivity : AppCompatActivity() {
                 val durText = formatDuration(dur)
                 setStatus("${getString(R.string.status_stopped)}\n${getString(R.string.duration)}: $durText" +
                     if (path.isNotEmpty()) "\n${getString(R.string.saved_to)}:\n$path" else "")
-                PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
+                if (!isFinishing && !(android.os.Build.VERSION.SDK_INT >= 17 && isDestroyed)) {
+                    PlayerDialog.showAfterRecording(this@MainActivity, uri, path, durText, note)
+                }
                 refreshList()
             } else if (msg.contains("Gagal", true) || msg.contains("Failed", true) ||
                 msg.contains(getString(R.string.status_failed), true)
@@ -296,11 +298,8 @@ class MainActivity : AppCompatActivity() {
     private fun launchService(code: Int, data: Intent, isScreen: Boolean) {
         val micPos = spinMic.selectedItemPosition
         val cfgMode = when {
-            isScreen -> when (micPos) {
-                1 -> RecorderConfig.SCREEN_INTERNAL
-                2 -> RecorderConfig.SCREEN_INTERNAL // internal+mic approximated
-                else -> RecorderConfig.SCREEN_MIC
-            }
+            // Rekaman layar: selalu satu file MP4 (video + audio menyatu)
+            isScreen -> RecorderConfig.SCREEN_MIC
             else -> when (micPos) {
                 1 -> RecorderConfig.AUDIO_INTERNAL
                 2 -> RecorderConfig.AUDIO_INTERNAL_MIC
