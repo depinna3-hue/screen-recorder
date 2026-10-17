@@ -52,6 +52,14 @@ public final class RequestPermission {
     }
 
     
+    /**
+     * Tandai bahwa izin sudah/sedang diminta oleh pihak lain (mis. MainActivity), supaya
+     * App.onActivityResumed tidak memanggil requestPermissions kedua yang membatalkan yang pertama.
+     */
+    public static void tandaiSudahDiminta() {
+        sudahDiminta = true;
+    }
+
     public static void mintaLagi(Activity act) {
         sudahDiminta = false;
         minta(act);
