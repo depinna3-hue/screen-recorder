@@ -130,4 +130,10 @@ File masuk folder KausarRecorder:
 • Music/KausarRecorder/Audio — rekaman suara
 • Movies/KausarRecorder/Screen — rekaman layar</string>
     <string name="bookmark_added">Bookmark ditambahkan di %1$d detik</string>
+    <string name="section_filter">Filter mikrofon (sistem)</string>
+    <string name="filter_original">Asli (tanpa filter)</string>
+    <string name="filter_voice">Suara bicara (NS+AGC)</string>
+    <string name="filter_quiet">Suara pelan (AGC)</string>
+    <string name="filter_music">Musik (alami)</string>
+    <string name="filter_outdoor">Luar ruangan (NS)</string>
 </resources>
